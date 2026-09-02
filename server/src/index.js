@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { connectDB } from './config/db.js';
+import authRoutes from './routes/authRoutes.js';
 
 dotenv.config();
 
@@ -14,6 +16,9 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+
+// Routes
+app.use('/api/auth', authRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -32,7 +37,29 @@ app.get('/', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`[CodeSpeed Server] running on http://localhost:${PORT}`);
-  console.log(`[CodeSpeed Server] Health check available at http://localhost:${PORT}/api/health`);
+// 404 handler for unknown API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({
+    status: 'error',
+    message: 'API endpoint not found'
+  });
 });
+
+import { fileURLToPath } from 'url';
+
+// Start server if run directly
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isDirectRun) {
+  // Connect to MongoDB if URI configured
+  connectDB().catch((err) => {
+    console.warn(`[MongoDB] Initial connection attempt failed: ${err.message}`);
+  });
+
+  app.listen(PORT, () => {
+    console.log(`[CodeSpeed Server] running on http://localhost:${PORT}`);
+    console.log(`[CodeSpeed Server] Health check available at http://localhost:${PORT}/api/health`);
+  });
+}
+
+export default app;
+

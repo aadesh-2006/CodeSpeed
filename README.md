@@ -13,15 +13,20 @@ CodeSpeed is a developer-centric typing speed tracker designed specifically for 
 - **Vite**
 - **JavaScript (ES Modules)**
 - Modern vanilla CSS design system
+- Client API service with JWT authentication state management (`localStorage`)
 
 ### Backend (`server/`)
 - **Node.js**
 - **Express**
+- **MongoDB & Mongoose**
+- **JSON Web Tokens (jsonwebtoken)**
+- **Password Hashing (bcryptjs)**
 - **CORS**
 - **dotenv**
 
-### Database (Planned)
-- MongoDB (to be introduced in later milestones)
+### Testing (`server/tests/`)
+- **Node.js Test Runner (`node:test`, `node:assert`)**
+- **In-Memory MongoDB (`mongodb-memory-server`)** for isolated integration tests
 
 ---
 
@@ -29,19 +34,40 @@ CodeSpeed is a developer-centric typing speed tracker designed specifically for 
 
 ```text
 CodeSpeed/
-├── client/                 # React + Vite frontend application
-│   ├── public/             # Static assets & favicons
-│   ├── src/                # React source code (components, styles)
-│   ├── index.html          # HTML entrypoint
-│   ├── package.json        # Frontend dependencies & scripts
-│   └── vite.config.js      # Vite build configuration
-├── server/                 # Node.js + Express backend API
+├── client/                     # React + Vite frontend application
+│   ├── public/                 # Static assets & favicons
 │   ├── src/
-│   │   └── index.js        # Express app entrypoint & health routes
-│   └── package.json        # Backend dependencies & scripts
-├── .env.example            # Template for environment variables (safe to commit)
-├── .gitignore              # Git ignore rules for node_modules, .env, builds, etc.
-└── README.md               # Project documentation
+│   │   ├── assets/             # Logos & icons
+│   │   ├── components/
+│   │   │   └── AuthForm.jsx    # Login & Signup interactive form component
+│   │   ├── services/
+│   │   │   └── api.js          # Centralized API service with JWT management
+│   │   ├── App.css             # Dark-themed styling
+│   │   ├── App.jsx             # Main application component & auth state
+│   │   ├── index.css           # Global reset & baseline styles
+│   │   └── main.jsx            # React root entrypoint
+│   ├── index.html              # HTML entrypoint
+│   ├── package.json            # Frontend dependencies & scripts
+│   └── vite.config.js          # Vite build configuration
+├── server/                     # Node.js + Express backend API
+│   ├── src/
+│   │   ├── config/
+│   │   │   └── db.js           # Mongoose MongoDB connection config
+│   │   ├── controllers/
+│   │   │   └── authController.js # Signup, login, and profile controllers
+│   │   ├── middleware/
+│   │   │   └── auth.js         # JWT verification middleware
+│   │   ├── models/
+│   │   │   └── User.js         # Mongoose User schema & password security
+│   │   ├── routes/
+│   │   │   └── authRoutes.js   # Auth API route definitions
+│   │   └── index.js            # Express app entrypoint & middleware
+│   ├── tests/
+│   │   └── auth.test.js        # Integration tests for auth & health APIs
+│   └── package.json            # Backend dependencies, scripts & test runner
+├── .env.example                # Template for environment variables (safe to commit)
+├── .gitignore                  # Git ignore rules for node_modules, .env, builds, etc.
+└── README.md                   # Project documentation
 ```
 
 ---
@@ -54,6 +80,8 @@ CodeSpeed/
 > - All sensitive configurations belong in local `.env` files.
 > - `.env` and related variations are explicitly ignored by `.gitignore`.
 > - Always maintain `.env.example` with empty or dummy placeholder values for team reference.
+> - Never store plaintext passwords in the database (always use bcrypt hashes).
+> - Never expose `passwordHash` in API responses or JWT payloads.
 > - Always inspect `git status` and staged files before creating any commit.
 
 ---
@@ -63,6 +91,7 @@ CodeSpeed/
 ### Prerequisites
 - **Node.js**: v18+ recommended (tested on v24)
 - **npm**: v9+ (tested on v11)
+- **MongoDB**: A running local MongoDB instance (`mongodb://localhost:27017/codespeed`) or a free MongoDB Atlas connection string.
 
 ### 1. Clone the Repository
 ```bash
@@ -71,11 +100,22 @@ cd CodeSpeed
 ```
 
 ### 2. Configure Environment Variables
-Copy `.env.example` to create local `.env` configurations if needed:
+Copy `.env.example` to create your local `.env` in `server/`:
 ```bash
-# Optional root/server configuration
-copy .env.example server\.env    # On Windows
-# cp .env.example server/.env    # On Linux/macOS
+# On Windows
+copy .env.example server\.env
+
+# On Linux/macOS
+cp .env.example server/.env
+```
+
+Edit `server/.env` with your local values:
+```env
+PORT=5000
+NODE_ENV=development
+CLIENT_URL=http://localhost:5173
+MONGODB_URI=mongodb://localhost:27017/codespeed
+JWT_SECRET=your_super_secret_jwt_key_here
 ```
 
 ---
@@ -91,7 +131,7 @@ npm run dev     # or 'npm start'
 ```
 The server will start at:
 - **Base URL**: `http://localhost:5000`
-- **Health Check Endpoint**: `http://localhost:5000/api/health`
+- **Health Check**: `http://localhost:5000/api/health`
 
 ### Start Frontend Client
 In a separate terminal window:
@@ -105,22 +145,41 @@ The Vite development server will start at:
 
 ---
 
-## API Health Check Endpoint
+## Running Automated Tests
 
-- **Endpoint**: `GET /api/health`
-- **Response**:
-```json
-{
-  "status": "ok",
-  "message": "CodeSpeed API is running"
-}
+Run the backend integration test suite:
+```bash
+cd server
+npm test
 ```
+The tests execute against an isolated in-memory MongoDB instance and verify:
+- User signup (validation, hashing, duplicate email & username prevention)
+- User login (valid credentials, incorrect passwords, nonexistent accounts)
+- JWT authentication (valid token, missing token, malformed/expired token)
+- Protected `/api/auth/me` endpoint (ensuring `passwordHash` is never leaked)
+- System health check `/api/health`
 
 ---
 
-## Current Status: Milestone 0 (M0)
-- [x] Project architecture and monorepo scaffolding
-- [x] Clean client & server separation
-- [x] Node.js/Express backend with health check endpoint
-- [x] React + Vite frontend with CodeSpeed brand showcase
-- [x] Secure gitignore rules & environment variable templates
+## API Endpoints
+
+### Public Endpoints
+
+| Method | Endpoint | Description | Request Body |
+|---|---|---|---|
+| `GET` | `/api/health` | API health check | None |
+| `POST` | `/api/auth/signup` | Register a new user | `{ "username": "...", "email": "...", "password": "..." }` |
+| `POST` | `/api/auth/login` | Authenticate user & return JWT | `{ "email": "...", "password": "..." }` |
+
+### Protected Endpoints (Requires `Authorization: Bearer <token>`)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/auth/me` | Fetch authenticated user profile |
+
+---
+
+## Milestone Progress
+
+- [x] **Milestone 0 (M0)**: Project initialization, React + Vite scaffolding, Express health check, Git security configuration.
+- [x] **Milestone 1 (M1)**: Authentication system, User model, MongoDB connection, bcrypt hashing, JWT issuance & middleware, React Auth UI, automated tests.
