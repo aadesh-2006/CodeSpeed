@@ -14,6 +14,7 @@ CodeSpeed is a developer-centric typing speed tracker designed specifically for 
 - **JavaScript (ES Modules)**
 - Modern vanilla CSS design system
 - Client API service with JWT authentication state management (`localStorage`)
+- Interactive coding typing engine with character-level accuracy and custom `Tab` indentation
 
 ### Backend (`server/`)
 - **Node.js**
@@ -24,9 +25,10 @@ CodeSpeed is a developer-centric typing speed tracker designed specifically for 
 - **CORS**
 - **dotenv**
 
-### Testing (`server/tests/`)
-- **Node.js Test Runner (`node:test`, `node:assert`)**
-- **In-Memory MongoDB (`mongodb-memory-server`)** for isolated integration tests
+### Testing
+- **Node.js Native Test Runner (`node:test`, `node:assert`)**
+- **Backend Tests (`server/tests/`)**: Isolated integration tests using `mongodb-memory-server`
+- **Frontend Tests (`client/tests/`)**: Unit tests for pure WPM, accuracy, and character comparison logic
 
 ---
 
@@ -34,40 +36,49 @@ CodeSpeed is a developer-centric typing speed tracker designed specifically for 
 
 ```text
 CodeSpeed/
-├── client/                     # React + Vite frontend application
-│   ├── public/                 # Static assets & favicons
+├── client/                         # React + Vite frontend application
+│   ├── public/                     # Static assets & favicons
 │   ├── src/
-│   │   ├── assets/             # Logos & icons
+│   │   ├── assets/                 # Logos & icons
 │   │   ├── components/
-│   │   │   └── AuthForm.jsx    # Login & Signup interactive form component
+│   │   │   ├── AuthForm.jsx        # Login & Signup interactive form
+│   │   │   ├── TestSetup.jsx       # Language & timer selection UI
+│   │   │   ├── TypingTest.jsx      # Active typing test & code highlighter
+│   │   │   └── TestResult.jsx      # Test completion summary card
+│   │   ├── data/
+│   │   │   └── snippets.js         # Multiline code snippets (8 languages)
 │   │   ├── services/
-│   │   │   └── api.js          # Centralized API service with JWT management
-│   │   ├── App.css             # Dark-themed styling
-│   │   ├── App.jsx             # Main application component & auth state
-│   │   ├── index.css           # Global reset & baseline styles
-│   │   └── main.jsx            # React root entrypoint
-│   ├── index.html              # HTML entrypoint
-│   ├── package.json            # Frontend dependencies & scripts
-│   └── vite.config.js          # Vite build configuration
-├── server/                     # Node.js + Express backend API
+│   │   │   └── api.js              # Centralized API service with JWT management
+│   │   ├── utils/
+│   │   │   └── typingMetrics.js    # Pure WPM, accuracy, & diffing utilities
+│   │   ├── App.css                 # Dark-themed styling
+│   │   ├── App.jsx                 # App entrypoint & test state machine
+│   │   ├── index.css               # Global reset & baseline styles
+│   │   └── main.jsx                # React root entrypoint
+│   ├── tests/
+│   │   └── typingMetrics.test.js   # Unit tests for typing engine formulas
+│   ├── index.html                  # HTML entrypoint
+│   ├── package.json                # Frontend dependencies & test scripts
+│   └── vite.config.js              # Vite build configuration
+├── server/                         # Node.js + Express backend API
 │   ├── src/
 │   │   ├── config/
-│   │   │   └── db.js           # Mongoose MongoDB connection config
+│   │   │   └── db.js               # Mongoose MongoDB connection config
 │   │   ├── controllers/
-│   │   │   └── authController.js # Signup, login, and profile controllers
+│   │   │   └── authController.js   # Signup, login, and profile controllers
 │   │   ├── middleware/
-│   │   │   └── auth.js         # JWT verification middleware
+│   │   │   └── auth.js             # JWT verification middleware
 │   │   ├── models/
-│   │   │   └── User.js         # Mongoose User schema & password security
+│   │   │   └── User.js             # Mongoose User schema & password security
 │   │   ├── routes/
-│   │   │   └── authRoutes.js   # Auth API route definitions
-│   │   └── index.js            # Express app entrypoint & middleware
+│   │   │   └── authRoutes.js       # Auth API route definitions
+│   │   └── index.js                # Express app entrypoint & middleware
 │   ├── tests/
-│   │   └── auth.test.js        # Integration tests for auth & health APIs
-│   └── package.json            # Backend dependencies, scripts & test runner
-├── .env.example                # Template for environment variables (safe to commit)
-├── .gitignore                  # Git ignore rules for node_modules, .env, builds, etc.
-└── README.md                   # Project documentation
+│   │   └── auth.test.js            # Integration tests for auth & health APIs
+│   └── package.json                # Backend dependencies & test scripts
+├── .env.example                    # Template for environment variables (safe to commit)
+├── .gitignore                      # Git ignore rules for node_modules, .env, builds, etc.
+└── README.md                       # Project documentation
 ```
 
 ---
@@ -91,7 +102,7 @@ CodeSpeed/
 ### Prerequisites
 - **Node.js**: v18+ recommended (tested on v24)
 - **npm**: v9+ (tested on v11)
-- **MongoDB**: A running local MongoDB instance (`mongodb://localhost:27017/codespeed`) or a free MongoDB Atlas connection string.
+- **MongoDB**: A running local MongoDB instance (`mongodb://localhost:27017/codespeed`) or MongoDB Atlas URI for development.
 
 ### 1. Clone the Repository
 ```bash
@@ -145,19 +156,55 @@ The Vite development server will start at:
 
 ---
 
-## Running Automated Tests
+## Running Tests
 
-Run the backend integration test suite:
+### Client Unit Tests (Typing Metrics & Formulas)
+```bash
+cd client
+npm test
+```
+Verifies WPM formula, accuracy percentages, character comparison, spaces/newlines/symbols, and timer formatting.
+
+### Backend Integration Tests (Authentication & Health)
 ```bash
 cd server
 npm test
 ```
-The tests execute against an isolated in-memory MongoDB instance and verify:
-- User signup (validation, hashing, duplicate email & username prevention)
-- User login (valid credentials, incorrect passwords, nonexistent accounts)
-- JWT authentication (valid token, missing token, malformed/expired token)
-- Protected `/api/auth/me` endpoint (ensuring `passwordHash` is never leaked)
-- System health check `/api/health`
+Verifies user registration, login, bcrypt verification, JWT middleware, `/api/auth/me`, and `/api/health`.
+
+---
+
+## Typing Engine Specifications (Milestone 2)
+
+### Supported Languages
+1. **JavaScript**
+2. **Python**
+3. **Java**
+4. **C++**
+5. **C**
+6. **HTML**
+7. **CSS**
+8. **SQL**
+
+### Supported Timers
+- **30 seconds** (30s)
+- **1 minute** (60s)
+- **2 minutes** (120s)
+- **3 minutes** (180s)
+- **4 minutes** (240s)
+- **5 minutes** (300s)
+- **10 minutes** (600s)
+
+### WPM Formula
+$$\text{WPM} = \frac{\text{correctCharacters} / 5}{\text{elapsedMinutes}}$$
+- Standard: 1 word = 5 characters.
+- Uses only **correctly typed characters** (not total typed).
+- Avoids division by zero and rounds to nearest whole number.
+
+### Accuracy Formula
+$$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharacters}}\right) \times 100$$
+- Expressed as a percentage rounded to 1 decimal place.
+- Returns 0% if total typed characters is 0.
 
 ---
 
@@ -183,3 +230,4 @@ The tests execute against an isolated in-memory MongoDB instance and verify:
 
 - [x] **Milestone 0 (M0)**: Project initialization, React + Vite scaffolding, Express health check, Git security configuration.
 - [x] **Milestone 1 (M1)**: Authentication system, User model, MongoDB connection, bcrypt hashing, JWT issuance & middleware, React Auth UI, automated tests.
+- [x] **Milestone 2 (M2)**: Coding typing engine, 8 languages, 7 timer durations, live character-level feedback, Tab indentation, WPM & accuracy metrics, results card, unit test suite.

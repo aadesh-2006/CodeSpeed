@@ -1,12 +1,23 @@
 import { useState, useEffect } from 'react';
 import { api, clearToken, getToken } from './services/api';
 import AuthForm from './components/AuthForm';
+import TestSetup from './components/TestSetup';
+import TypingTest from './components/TypingTest';
+import TestResult from './components/TestResult';
+import { SUPPORTED_LANGUAGES, getRandomSnippet } from './data/snippets';
 import './App.css';
 
 function App() {
   const [apiStatus, setApiStatus] = useState({ status: 'checking', message: 'Connecting to API...' });
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Typing engine states: 'IDLE' | 'RUNNING' | 'FINISHED'
+  const [testState, setTestState] = useState('IDLE');
+  const [selectedLanguage, setSelectedLanguage] = useState('javascript');
+  const [selectedDuration, setSelectedDuration] = useState(60);
+  const [currentSnippet, setCurrentSnippet] = useState(null);
+  const [testResults, setTestResults] = useState(null);
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -43,7 +54,6 @@ function App() {
         }
       })
       .catch(() => {
-        // Token was invalid or expired, clear it
         clearToken();
         setUser(null);
       })
@@ -59,12 +69,47 @@ function App() {
   const handleLogout = () => {
     clearToken();
     setUser(null);
+    setTestState('IDLE');
+    setCurrentSnippet(null);
+    setTestResults(null);
   };
+
+  // Start test with selected language and duration
+  const handleStartTest = () => {
+    const snippet = getRandomSnippet(selectedLanguage);
+    setCurrentSnippet(snippet);
+    setTestResults(null);
+    setTestState('RUNNING');
+  };
+
+  // Complete test and show results
+  const handleFinishTest = (results) => {
+    setTestResults(results);
+    setTestState('FINISHED');
+  };
+
+  // Try again with fresh snippet for same language
+  const handleTryAgain = () => {
+    const freshSnippet = getRandomSnippet(selectedLanguage, currentSnippet?.id);
+    setCurrentSnippet(freshSnippet);
+    setTestResults(null);
+    setTestState('RUNNING');
+  };
+
+  // Return to configuration setup
+  const handleChangeSettings = () => {
+    setTestState('IDLE');
+    setCurrentSnippet(null);
+    setTestResults(null);
+  };
+
+  const activeLanguageObj = SUPPORTED_LANGUAGES.find((l) => l.id === selectedLanguage);
+  const activeLanguageName = activeLanguageObj ? activeLanguageObj.name : selectedLanguage;
 
   return (
     <div className="app-container">
       <header className="header">
-        <div className="badge">Milestone 1 &bull; Authentication</div>
+        <div className="badge">Milestone 2 &bull; Typing Engine</div>
       </header>
 
       <main className="hero">
@@ -77,26 +122,50 @@ function App() {
             <p>Loading user session...</p>
           </div>
         ) : user ? (
-          /* Simple Authenticated Area for M1 */
-          <div className="authenticated-card">
-            <div className="user-welcome">
-              <h2>Welcome, <span className="highlight-username">{user.username}</span></h2>
-              <p className="user-email">{user.email}</p>
+          /* Authenticated Area: Typing Engine */
+          <div className="authenticated-wrapper">
+            <div className="user-bar">
+              <div className="user-greeting">
+                <span>Logged in as </span>
+                <strong className="username-tag">{user.username}</strong>
+                <span className="user-email-tag">({user.email})</span>
+              </div>
+              <button type="button" className="logout-compact-btn" onClick={handleLogout}>
+                Log Out
+              </button>
             </div>
 
-            <div className="auth-status-box">
-              <span className="secure-badge">&#x2714; Authenticated via JWT</span>
-              <p className="scope-note">
-                Your account is ready. Coding speed tests and tracking are scheduled for upcoming milestones.
-              </p>
-            </div>
+            {testState === 'IDLE' && (
+              <TestSetup
+                selectedLanguage={selectedLanguage}
+                setSelectedLanguage={setSelectedLanguage}
+                selectedDuration={selectedDuration}
+                setSelectedDuration={setSelectedDuration}
+                onStartTest={handleStartTest}
+              />
+            )}
 
-            <button type="button" className="logout-btn" onClick={handleLogout}>
-              Log Out
-            </button>
+            {testState === 'RUNNING' && currentSnippet && (
+              <TypingTest
+                snippet={currentSnippet}
+                durationSeconds={selectedDuration}
+                languageName={activeLanguageName}
+                onFinish={handleFinishTest}
+                onCancel={handleChangeSettings}
+                onRestart={handleTryAgain}
+              />
+            )}
+
+            {testState === 'FINISHED' && testResults && (
+              <TestResult
+                results={testResults}
+                onTryAgain={handleTryAgain}
+                onChangeSettings={handleChangeSettings}
+              />
+            )}
           </div>
         ) : (
-          /* Unauthenticated Auth UI (Login / Signup) */
+          /* Unauthenticated Auth UI */
           <AuthForm onAuthSuccess={handleAuthSuccess} />
         )}
 
@@ -108,7 +177,7 @@ function App() {
             </span>
           </div>
           <p className="milestone-note">
-            Milestone 1 Authentication active with MongoDB &amp; JWT. Typing tests coming in later milestones.
+            Milestone 2 Coding Typing Engine active. Tests run client-side. Performance persistence coming in Milestone 4.
           </p>
         </div>
       </main>
