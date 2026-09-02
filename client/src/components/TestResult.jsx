@@ -9,14 +9,21 @@ export function TestResult({ results, onTryAgain, onChangeSettings }) {
     totalTyped = 0,
     timeElapsedFormatted = '00:00',
     languageName = '',
+    difficulty = '',
   } = results || {};
+
+  const displayDiff = difficulty ? difficulty.charAt(0).toUpperCase() + difficulty.slice(1) : '';
 
   return (
     <div className="test-result-card">
       <div className="result-header">
         <span className="result-badge">Test Complete</span>
         <h2 className="result-title">Performance Summary</h2>
-        {languageName && <p className="result-subtitle">{languageName} Coding Test</p>}
+        {languageName && (
+          <p className="result-subtitle">
+            {languageName} {displayDiff ? `• ${displayDiff}` : ''} Coding Test
+          </p>
+        )}
       </div>
 
       <div className="result-hero-stats">

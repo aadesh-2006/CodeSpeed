@@ -90,6 +90,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
       timeElapsedSeconds: finalElapsed,
       timeElapsedFormatted: formatTime(finalElapsed),
       languageName,
+      difficulty: snippet.difficulty,
       snippetTitle: snippet.title,
     });
   };
@@ -143,6 +144,9 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
       <div className="test-nav-bar">
         <div className="meta-left">
           <span className="lang-tag">{languageName}</span>
+          <span className={`diff-tag ${snippet.difficulty?.toLowerCase()}`}>
+            {snippet.difficulty ? snippet.difficulty.charAt(0).toUpperCase() + snippet.difficulty.slice(1) : ''}
+          </span>
           <span className="snippet-tag">{snippet.title}</span>
         </div>
         <div className={`countdown-timer ${timeLeft <= 10 ? 'urgent' : ''}`}>

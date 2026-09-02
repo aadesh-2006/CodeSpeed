@@ -1,9 +1,18 @@
 import React from 'react';
-import { SUPPORTED_LANGUAGES, TIMER_OPTIONS } from '../data/snippets';
+import { SUPPORTED_LANGUAGES, DIFFICULTY_LEVELS, TIMER_OPTIONS } from '../data/snippets';
 
-export function TestSetup({ selectedLanguage, setSelectedLanguage, selectedDuration, setSelectedDuration, onStartTest }) {
+export function TestSetup({
+  selectedLanguage,
+  setSelectedLanguage,
+  selectedDifficulty,
+  setSelectedDifficulty,
+  selectedDuration,
+  setSelectedDuration,
+  onStartTest,
+}) {
   return (
     <div className="test-setup-card">
+      {/* 1. Language Selection */}
       <div className="setup-section">
         <label className="section-label">Select Programming Language</label>
         <div className="language-grid">
@@ -21,6 +30,25 @@ export function TestSetup({ selectedLanguage, setSelectedLanguage, selectedDurat
         </div>
       </div>
 
+      {/* 2. Difficulty Selection */}
+      <div className="setup-section">
+        <label className="section-label">Select Difficulty</label>
+        <div className="difficulty-grid">
+          {DIFFICULTY_LEVELS.map((diff) => (
+            <button
+              key={diff.id}
+              type="button"
+              className={`diff-pill ${diff.id} ${selectedDifficulty === diff.id ? 'active' : ''}`}
+              onClick={() => setSelectedDifficulty(diff.id)}
+            >
+              <span className="diff-dot"></span>
+              <span className="diff-name">{diff.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 3. Duration Selection */}
       <div className="setup-section">
         <label className="section-label">Select Duration</label>
         <div className="timer-grid">
@@ -37,6 +65,7 @@ export function TestSetup({ selectedLanguage, setSelectedLanguage, selectedDurat
         </div>
       </div>
 
+      {/* Start Action */}
       <div className="setup-action">
         <button type="button" className="start-test-btn" onClick={onStartTest}>
           Start Coding Test

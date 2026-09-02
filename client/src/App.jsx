@@ -15,6 +15,7 @@ function App() {
   // Typing engine states: 'IDLE' | 'RUNNING' | 'FINISHED'
   const [testState, setTestState] = useState('IDLE');
   const [selectedLanguage, setSelectedLanguage] = useState('javascript');
+  const [selectedDifficulty, setSelectedDifficulty] = useState('medium');
   const [selectedDuration, setSelectedDuration] = useState(60);
   const [currentSnippet, setCurrentSnippet] = useState(null);
   const [testResults, setTestResults] = useState(null);
@@ -74,9 +75,9 @@ function App() {
     setTestResults(null);
   };
 
-  // Start test with selected language and duration
+  // Start test with selected language, difficulty, and duration
   const handleStartTest = () => {
-    const snippet = getRandomSnippet(selectedLanguage);
+    const snippet = getRandomSnippet(selectedLanguage, selectedDifficulty);
     setCurrentSnippet(snippet);
     setTestResults(null);
     setTestState('RUNNING');
@@ -88,9 +89,9 @@ function App() {
     setTestState('FINISHED');
   };
 
-  // Try again with fresh snippet for same language
+  // Try again with fresh snippet for same language and difficulty
   const handleTryAgain = () => {
-    const freshSnippet = getRandomSnippet(selectedLanguage, currentSnippet?.id);
+    const freshSnippet = getRandomSnippet(selectedLanguage, selectedDifficulty, currentSnippet?.id);
     setCurrentSnippet(freshSnippet);
     setTestResults(null);
     setTestState('RUNNING');
@@ -109,7 +110,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="header">
-        <div className="badge">Milestone 2 &bull; Typing Engine</div>
+        <div className="badge">Milestone 3 &bull; Snippet System V2</div>
       </header>
 
       <main className="hero">
@@ -139,6 +140,8 @@ function App() {
               <TestSetup
                 selectedLanguage={selectedLanguage}
                 setSelectedLanguage={setSelectedLanguage}
+                selectedDifficulty={selectedDifficulty}
+                setSelectedDifficulty={setSelectedDifficulty}
                 selectedDuration={selectedDuration}
                 setSelectedDuration={setSelectedDuration}
                 onStartTest={handleStartTest}
@@ -177,7 +180,7 @@ function App() {
             </span>
           </div>
           <p className="milestone-note">
-            Milestone 2 Coding Typing Engine active. Tests run client-side. Performance persistence coming in Milestone 4.
+            Milestone 3 Snippet System V2 active (72 snippets across 8 languages &amp; 3 difficulties). Performance persistence coming in Milestone 4.
           </p>
         </div>
       </main>

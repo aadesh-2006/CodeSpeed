@@ -158,12 +158,12 @@ The Vite development server will start at:
 
 ## Running Tests
 
-### Client Unit Tests (Typing Metrics & Formulas)
+### Client Unit Tests (Typing Metrics & Snippet System)
 ```bash
 cd client
 npm test
 ```
-Verifies WPM formula, accuracy percentages, character comparison, spaces/newlines/symbols, and timer formatting.
+Verifies WPM formula, accuracy percentages, character comparison, spaces/newlines/symbols, timer formatting, 72-snippet dataset integrity, difficulty filtering, and immediate-repeat prevention.
 
 ### Backend Integration Tests (Authentication & Health)
 ```bash
@@ -174,7 +174,7 @@ Verifies user registration, login, bcrypt verification, JWT middleware, `/api/au
 
 ---
 
-## Typing Engine Specifications (Milestone 2)
+## Typing Engine & Snippet System Specifications
 
 ### Supported Languages
 1. **JavaScript**
@@ -185,6 +185,17 @@ Verifies user registration, login, bcrypt verification, JWT middleware, `/api/au
 6. **HTML**
 7. **CSS**
 8. **SQL**
+
+### Difficulty Levels
+- **Easy**: Basic functions, loops, conditionals, simple selectors, fundamental queries
+- **Medium**: Common algorithms, data structures, classes, responsive layouts, multi-table JOINs
+- **Hard**: Advanced algorithms, recursion, concurrency/threading, complex CSS 3D/glassmorphism, recursive CTEs and window functions
+
+### Snippet Dataset
+- Exactly 72 curated snippets (8 languages × 3 difficulties × 3 snippets each).
+- Clean metadata: `{ id, language, difficulty, title, code }`.
+- Random selection with immediate-repeat avoidance when multiple snippets exist in a category.
+- Safe fallbacks for unknown language or difficulty inputs.
 
 ### Supported Timers
 - **30 seconds** (30s)
@@ -231,3 +242,4 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 - [x] **Milestone 0 (M0)**: Project initialization, React + Vite scaffolding, Express health check, Git security configuration.
 - [x] **Milestone 1 (M1)**: Authentication system, User model, MongoDB connection, bcrypt hashing, JWT issuance & middleware, React Auth UI, automated tests.
 - [x] **Milestone 2 (M2)**: Coding typing engine, 8 languages, 7 timer durations, live character-level feedback, Tab indentation, WPM & accuracy metrics, results card, unit test suite.
+- [x] **Milestone 3 (M3)**: Snippet System V2, 72 curated realistic coding snippets across 8 languages and 3 difficulties (Easy/Medium/Hard), repeat-avoiding selection logic, difficulty UI controls, metadata display in test & results.
