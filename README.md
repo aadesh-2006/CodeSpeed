@@ -231,9 +231,10 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 
 ### Protected Endpoints (Requires `Authorization: Bearer <token>`)
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/auth/me` | Fetch authenticated user profile |
+| Method | Endpoint | Description | Request Body |
+|---|---|---|---|
+| `GET` | `/api/auth/me` | Fetch authenticated user profile | None |
+| `POST` | `/api/performances` | Record a completed typing performance | `{ "language": "...", "difficulty": "...", "timerSeconds": 60, "wpm": 75, "accuracy": 98.5, "correctChars": 375, "incorrectChars": 6, "elapsedSeconds": 60, "snippetId": "..." }` |
 
 ---
 
@@ -243,3 +244,4 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 - [x] **Milestone 1 (M1)**: Authentication system, User model, MongoDB connection, bcrypt hashing, JWT issuance & middleware, React Auth UI, automated tests.
 - [x] **Milestone 2 (M2)**: Coding typing engine, 8 languages, 7 timer durations, live character-level feedback, Tab indentation, WPM & accuracy metrics, results card, unit test suite.
 - [x] **Milestone 3 (M3)**: Snippet System V2, 72 curated realistic coding snippets across 8 languages and 3 difficulties (Easy/Medium/Hard), repeat-avoiding selection logic, difficulty UI controls, metadata display in test & results.
+- [x] **Milestone 4 (M4)**: Performance Persistence, MongoDB Performance model with user reference and strict validation, authenticated `POST /api/performances` endpoint with server-derived identity, client deduplication, resilient non-blocking UI, and full integration test coverage.

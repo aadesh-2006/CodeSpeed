@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "node --test tests/auth.test.js"
+    "test": "node --test tests/auth.test.js tests/performance.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

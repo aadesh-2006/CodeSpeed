@@ -716,6 +716,14 @@
   gap: 0.5rem;
 }
 
+.result-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 .result-badge {
   font-size: 0.8rem;
   font-weight: 700;
@@ -726,6 +734,34 @@
   border: 1px solid rgba(74, 222, 128, 0.25);
   padding: 0.3rem 0.8rem;
   border-radius: 9999px;
+}
+
+.save-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.3rem 0.75rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.save-badge.saved {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+.save-badge.saving {
+  color: #fde047;
+  background: rgba(253, 224, 71, 0.1);
+  border: 1px solid rgba(253, 224, 71, 0.25);
+  animation: pulse 1s infinite;
+}
+
+.save-badge.error {
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 .result-title {

@@ -75,6 +75,13 @@ export const api = {
   signup: (userData) => request('/api/auth/signup', { method: 'POST', body: JSON.stringify(userData) }),
   login: (credentials) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
   getMe: () => request('/api/auth/me', { method: 'GET' }),
+
+  // Performance persistence
+  savePerformance: (performanceData) =>
+    request('/api/performances', {
+      method: 'POST',
+      body: JSON.stringify(performanceData),
+    }),
 };
 
 export default api;

@@ -87,10 +87,14 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
       correctChars: comparison.correctCount,
       incorrectChars: comparison.incorrectCount,
       totalTyped: comparison.totalTyped,
+      elapsedSeconds: finalElapsed,
       timeElapsedSeconds: finalElapsed,
       timeElapsedFormatted: formatTime(finalElapsed),
+      language: snippet.language,
       languageName,
       difficulty: snippet.difficulty,
+      timerSeconds: durationSeconds,
+      snippetId: snippet.id,
       snippetTitle: snippet.title,
     });
   };

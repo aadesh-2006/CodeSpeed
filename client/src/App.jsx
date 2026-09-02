@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api, clearToken, getToken } from './services/api';
 import AuthForm from './components/AuthForm';
 import TestSetup from './components/TestSetup';
@@ -19,6 +19,9 @@ function App() {
   const [selectedDuration, setSelectedDuration] = useState(60);
   const [currentSnippet, setCurrentSnippet] = useState(null);
   const [testResults, setTestResults] = useState(null);
+  const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+
+  const attemptSavedRef = useRef(false);
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -73,6 +76,8 @@ function App() {
     setTestState('IDLE');
     setCurrentSnippet(null);
     setTestResults(null);
+    setSaveStatus(null);
+    attemptSavedRef.current = false;
   };
 
   // Start test with selected language, difficulty, and duration
@@ -80,6 +85,8 @@ function App() {
     const snippet = getRandomSnippet(selectedLanguage, selectedDifficulty);
     setCurrentSnippet(snippet);
     setTestResults(null);
+    setSaveStatus(null);
+    attemptSavedRef.current = false;
     setTestState('RUNNING');
   };
 
@@ -87,6 +94,32 @@ function App() {
   const handleFinishTest = (results) => {
     setTestResults(results);
     setTestState('FINISHED');
+
+    // Prevent duplicate saves of the same completed attempt
+    if (!attemptSavedRef.current && user && results) {
+      attemptSavedRef.current = true;
+      setSaveStatus('saving');
+
+      api
+        .savePerformance({
+          language: results.language,
+          difficulty: results.difficulty,
+          timerSeconds: results.timerSeconds,
+          wpm: results.wpm,
+          accuracy: results.accuracy,
+          correctChars: results.correctChars,
+          incorrectChars: results.incorrectChars,
+          elapsedSeconds: results.elapsedSeconds,
+          snippetId: results.snippetId,
+        })
+        .then(() => {
+          setSaveStatus('saved');
+        })
+        .catch((err) => {
+          console.warn('[CodeSpeed] Failed to save performance:', err.message);
+          setSaveStatus('error');
+        });
+    }
   };
 
   // Try again with fresh snippet for same language and difficulty
@@ -94,6 +127,8 @@ function App() {
     const freshSnippet = getRandomSnippet(selectedLanguage, selectedDifficulty, currentSnippet?.id);
     setCurrentSnippet(freshSnippet);
     setTestResults(null);
+    setSaveStatus(null);
+    attemptSavedRef.current = false;
     setTestState('RUNNING');
   };
 
@@ -102,6 +137,8 @@ function App() {
     setTestState('IDLE');
     setCurrentSnippet(null);
     setTestResults(null);
+    setSaveStatus(null);
+    attemptSavedRef.current = false;
   };
 
   const activeLanguageObj = SUPPORTED_LANGUAGES.find((l) => l.id === selectedLanguage);
@@ -110,7 +147,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="header">
-        <div className="badge">Milestone 3 &bull; Snippet System V2</div>
+        <div className="badge">Milestone 4 &bull; Performance Persistence</div>
       </header>
 
       <main className="hero">
@@ -162,6 +199,7 @@ function App() {
             {testState === 'FINISHED' && testResults && (
               <TestResult
                 results={testResults}
+                saveStatus={saveStatus}
                 onTryAgain={handleTryAgain}
                 onChangeSettings={handleChangeSettings}
               />
@@ -180,7 +218,7 @@ function App() {
             </span>
           </div>
           <p className="milestone-note">
-            Milestone 3 Snippet System V2 active (72 snippets across 8 languages &amp; 3 difficulties). Performance persistence coming in Milestone 4.
+            Milestone 4 Performance Persistence active with MongoDB. Completed test results are automatically recorded for authenticated users.
           </p>
         </div>
       </main>

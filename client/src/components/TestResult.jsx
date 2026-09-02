@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function TestResult({ results, onTryAgain, onChangeSettings }) {
+export function TestResult({ results, saveStatus, onTryAgain, onChangeSettings }) {
   const {
     wpm = 0,
     accuracy = 0,
@@ -17,7 +17,18 @@ export function TestResult({ results, onTryAgain, onChangeSettings }) {
   return (
     <div className="test-result-card">
       <div className="result-header">
-        <span className="result-badge">Test Complete</span>
+        <div className="result-badges-row">
+          <span className="result-badge">Test Complete</span>
+          {saveStatus === 'saving' && (
+            <span className="save-badge saving">Saving performance...</span>
+          )}
+          {saveStatus === 'saved' && (
+            <span className="save-badge saved">&#x2714; Saved to account</span>
+          )}
+          {saveStatus === 'error' && (
+            <span className="save-badge error">Local result only</span>
+          )}
+        </div>
         <h2 className="result-title">Performance Summary</h2>
         {languageName && (
           <p className="result-subtitle">
