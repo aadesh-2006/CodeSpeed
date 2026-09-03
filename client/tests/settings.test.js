@@ -2,25 +2,38 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 describe('Settings & Profile Management Pure Logic Tests', () => {
-  const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+  const usernameRegex = /^[\p{L}\p{N}_]{3,30}$/u;
   const dataUriRegex = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 
-  describe('Username Validation', () => {
-    test('accepts valid usernames with letters, numbers, and underscores (3-30 chars)', () => {
+  describe('Username Validation (Unicode Support)', () => {
+    test('accepts valid ASCII usernames with letters, numbers, and underscores (3-30 chars)', () => {
       assert.equal(usernameRegex.test('dev_racer'), true);
       assert.equal(usernameRegex.test('CodeSpeed99'), true);
       assert.equal(usernameRegex.test('abc'), true);
+      assert.equal(usernameRegex.test('Aadesh_2006'), true);
       assert.equal(usernameRegex.test('a'.repeat(30)), true);
     });
 
-    test('rejects invalid usernames (too short, too long, spaces, special chars)', () => {
+    test('accepts valid Unicode alphabetic usernames (Greek, Latin with diacritics, Cyrillic, etc.)', () => {
+      assert.equal(usernameRegex.test('Semnótēs'), true);
+      assert.equal(usernameRegex.test('José'), true);
+      assert.equal(usernameRegex.test('Müller'), true);
+      assert.equal(usernameRegex.test('Αλέξανδρος'), true);
+      assert.equal(usernameRegex.test('Иван_123'), true);
+    });
+
+    test('rejects invalid usernames (too short, too long, spaces, special chars, symbols)', () => {
       assert.equal(usernameRegex.test('ab'), false);
       assert.equal(usernameRegex.test(''), false);
       assert.equal(usernameRegex.test('a'.repeat(31)), false);
       assert.equal(usernameRegex.test('user name'), false);
+      assert.equal(usernameRegex.test('Semnótēs racer'), false);
       assert.equal(usernameRegex.test('user@name'), false);
       assert.equal(usernameRegex.test('user#name'), false);
       assert.equal(usernameRegex.test('user/name'), false);
+      assert.equal(usernameRegex.test('user\\name'), false);
+      assert.equal(usernameRegex.test('user.name'), false);
+      assert.equal(usernameRegex.test('user!'), false);
     });
   });
 

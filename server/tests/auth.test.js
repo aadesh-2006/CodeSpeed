@@ -709,6 +709,83 @@ describe('Authentication & User Profile API Tests', () => {
       const oldRes = await fetch(`${baseUrl}/api/users/settingspilot/profile`);
       assert.equal(oldRes.status, 404);
     });
+
+    test('Unicode username regression: Semnótēs signup, settings profile saving, and public profile routing', async () => {
+      // 1. Signup with Unicode username Semnótēs
+      const signupRes = await fetch(`${baseUrl}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'Semnótēs',
+          email: 'semnotes@example.com',
+          password: 'Password123!',
+        }),
+      });
+      assert.equal(signupRes.status, 201);
+      const signupData = await signupRes.json();
+      assert.equal(signupData.status, 'success');
+      assert.equal(signupData.user.username, 'Semnótēs');
+      const semnotesToken = signupData.token;
+
+      // 2. Semnótēs user opens settings and saves profile (with same username or updated bio/privacy)
+      const profileRes = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${semnotesToken}`,
+        },
+        body: JSON.stringify({
+          username: 'Semnótēs',
+          bio: 'Scholar of ancient Greek syntax and fast typing.',
+          practiceStatsVisibility: 'public',
+        }),
+      });
+      assert.equal(profileRes.status, 200);
+      const profileData = await profileRes.json();
+      assert.equal(profileData.status, 'success');
+      assert.equal(profileData.data.user.username, 'Semnótēs');
+      assert.equal(profileData.data.user.bio, 'Scholar of ancient Greek syntax and fast typing.');
+
+      // 3. Public profile query with /api/users/Semnótēs/profile (and URI encoded)
+      const pubRes = await fetch(`${baseUrl}/api/users/${encodeURIComponent('Semnótēs')}/profile`);
+      assert.equal(pubRes.status, 200);
+      const pubData = await pubRes.json();
+      assert.equal(pubData.data.username, 'Semnótēs');
+      assert.equal(pubData.data.bio, 'Scholar of ancient Greek syntax and fast typing.');
+
+      // 4. Duplicate Unicode username check: another user cannot signup with Semnótēs or case-insensitive variant
+      const dupRes = await fetch(`${baseUrl}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'Semnótēs',
+          email: 'another_semnotes@example.com',
+          password: 'Password123!',
+        }),
+      });
+      assert.equal(dupRes.status, 409);
+
+      // 5. Update username to another Unicode name (e.g. José)
+      const renameRes = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${semnotesToken}`,
+        },
+        body: JSON.stringify({
+          username: 'José',
+        }),
+      });
+      assert.equal(renameRes.status, 200);
+      const renameData = await renameRes.json();
+      assert.equal(renameData.data.user.username, 'José');
+
+      // 6. Public profile works with José
+      const josePubRes = await fetch(`${baseUrl}/api/users/${encodeURIComponent('José')}/profile`);
+      assert.equal(josePubRes.status, 200);
+      const josePubData = await josePubRes.json();
+      assert.equal(josePubData.data.username, 'José');
+    });
   });
 
   describe('POST /api/auth/change-password & Security', () => {

@@ -5,8 +5,13 @@ import Performance from '../models/Performance.js';
 import { evaluateBadges } from '../utils/badgeRules.js';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+const usernameRegex = /^[\p{L}\p{N}_]{3,30}$/u;
 const dataUriRegex = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+
+/**
+ * Escape special regex characters in a string for safe RegExp construction.
+ */
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * Helper to generate JWT token containing only user ID.
@@ -40,7 +45,7 @@ export const signup = async (req, res) => {
     const trimmedUsername = username.trim();
     const trimmedEmail = email.trim().toLowerCase();
 
-    // Validate username length and character format
+    // Validate username length and character format (supporting Unicode letters, numbers, and underscores)
     if (!usernameRegex.test(trimmedUsername)) {
       return res.status(400).json({
         status: 'error',
@@ -80,7 +85,9 @@ export const signup = async (req, res) => {
       });
     }
 
-    const existingUsername = await User.findOne({ username: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') } });
+    const existingUsername = await User.findOne({
+      username: { $regex: new RegExp(`^${escapeRegex(trimmedUsername)}$`, 'i') },
+    });
     if (existingUsername) {
       return res.status(409).json({
         status: 'error',
@@ -143,9 +150,6 @@ export const login = async (req, res) => {
         message: 'Username or email and password are required.',
       });
     }
-
-    // Escape special regex characters in username for safe query matching
-    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     // Find user by either email (case-insensitive) or username (case-insensitive)
     const user = await User.findOne({
@@ -255,7 +259,7 @@ export const updateProfile = async (req, res) => {
 
     const { username, bio, profilePhoto, practiceStatsVisibility } = req.body || {};
 
-    // 1. Update Username
+    // 1. Update Username (supports Unicode letters, numbers, and underscores)
     if (username !== undefined) {
       const trimmedUsername = typeof username === 'string' ? username.trim() : '';
       if (!usernameRegex.test(trimmedUsername)) {
@@ -269,7 +273,7 @@ export const updateProfile = async (req, res) => {
       if (trimmedUsername.toLowerCase() !== user.username.toLowerCase()) {
         const duplicate = await User.findOne({
           _id: { $ne: userId },
-          username: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') },
+          username: { $regex: new RegExp(`^${escapeRegex(trimmedUsername)}$`, 'i') },
         });
         if (duplicate) {
           return res.status(409).json({
@@ -457,7 +461,9 @@ export const getPublicProfile = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ username: { $regex: new RegExp(`^${usernameParam}$`, 'i') } });
+    const user = await User.findOne({
+      username: { $regex: new RegExp(`^${escapeRegex(usernameParam)}$`, 'i') },
+    });
     if (!user) {
       return res.status(404).json({
         status: 'error',
