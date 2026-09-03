@@ -70,8 +70,11 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
 
   // Live character comparison with whitespace tolerance and language awareness
   const comparison = compareCharacters(targetCode, typedCode, { language });
-  const liveWpm = calculateWPM(comparison.meaningfulCorrectCount || comparison.correctCount, elapsedSeconds);
-  const liveAccuracy = calculateAccuracy(comparison.correctCount, comparison.totalTyped);
+  const liveCorrect = comparison.meaningfulCorrectCount !== undefined
+    ? comparison.meaningfulCorrectCount
+    : comparison.correctCount;
+  const liveWpm = calculateWPM(liveCorrect, elapsedSeconds);
+  const liveAccuracy = calculateAccuracy(liveCorrect, liveCorrect + comparison.incorrectCount);
 
   // Auto-finish if full snippet is correctly typed
   useEffect(() => {
@@ -85,15 +88,21 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
       clearInterval(timerRef.current);
     }
     const finalElapsed = Math.max(1, elapsedSeconds || durationSeconds - timeLeft);
-    const finalWpm = calculateWPM(comparison.meaningfulCorrectCount || comparison.correctCount, finalElapsed);
-    const finalAccuracy = calculateAccuracy(comparison.correctCount, comparison.totalTyped);
+    const meaningfulCorrect = comparison.meaningfulCorrectCount !== undefined
+      ? comparison.meaningfulCorrectCount
+      : comparison.correctCount;
+    const finalWpm = calculateWPM(meaningfulCorrect, finalElapsed);
+    const finalAccuracy = calculateAccuracy(
+      meaningfulCorrect,
+      meaningfulCorrect + comparison.incorrectCount
+    );
 
     onFinish({
       wpm: finalWpm,
       accuracy: finalAccuracy,
-      correctChars: comparison.correctCount,
+      correctChars: meaningfulCorrect,
       incorrectChars: comparison.incorrectCount,
-      totalTyped: comparison.totalTyped,
+      totalTyped: meaningfulCorrect + comparison.incorrectCount,
       elapsedSeconds: finalElapsed,
       timeElapsedSeconds: finalElapsed,
       timeElapsedFormatted: formatTime(finalElapsed),

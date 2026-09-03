@@ -267,6 +267,32 @@ describe('Performance Persistence, History & Sorting API Tests', () => {
       });
       assert.equal(resEmpty.status, 400);
     });
+
+    test('successfully saves a multiline practice attempt where correctChars reflects meaningful uninflated characters and satisfies anti-tamper validation', async () => {
+      const multilinePayload = {
+        mode: 'practice',
+        language: 'java',
+        difficulty: 'medium',
+        timerSeconds: 30,
+        wpm: 18,
+        accuracy: 100,
+        correctChars: 45,
+        incorrectChars: 0,
+        elapsedSeconds: 30,
+        snippetId: 'java-medium-01',
+      };
+
+      const res = await makeRequest('/api/performances', {
+        body: multilinePayload,
+        token: testToken,
+      });
+
+      assert.equal(res.status, 201);
+      assert.equal(res.data.status, 'success');
+      assert.equal(res.data.data.performance.wpm, 18);
+      assert.equal(res.data.data.performance.correctChars, 45);
+      assert.equal(res.data.data.performance.mode, 'practice');
+    });
   });
 
   describe('GET /api/performances — History Retrieval, Filters, Sorting & Pagination', () => {

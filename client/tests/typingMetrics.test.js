@@ -274,7 +274,7 @@ describe('Typing Engine Pure Logic Tests', () => {
     });
   });
 
-  describe('Typing Metrics Integrity', () => {
+  describe('Typing Metrics Integrity & Backend Anti-Tamper Compatibility', () => {
     test('meaningfulCorrectCount excludes auto-indent leading spaces from WPM calculation', () => {
       const target = 'class Main {\n  int x = 1;\n}';
       const typed = 'class Main {\n  int x = 1;\n}';
@@ -283,6 +283,26 @@ describe('Typing Engine Pure Logic Tests', () => {
       assert.equal(result.correctCount, target.length);
       // The 2 leading spaces on line 2 are indent spaces and not counted towards meaningful typing inflation
       assert.equal(result.meaningfulCorrectCount, target.length - 2);
+    });
+
+    test('multiline snippet produces WPM and correctChars that satisfy backend anti-tamper constraints', () => {
+      const target = `public class Main {\n  public static int add(int a, int b) {\n    return a + b;\n  }\n}`;
+      const typed = `public class Main {\n  public static int add(int a, int b) {\n    return a + b;\n  }\n}`;
+      const result = compareCharacters(target, typed, { language: 'java' });
+      
+      const elapsedSeconds = 30;
+      const correctChars = result.meaningfulCorrectCount;
+      const incorrectChars = result.incorrectCount;
+      const wpm = calculateWPM(correctChars, elapsedSeconds);
+      const accuracy = calculateAccuracy(correctChars, correctChars + incorrectChars);
+
+      // Backend anti-tamper checks:
+      const expectedWpm = (correctChars / 5) / (elapsedSeconds / 60);
+      const expectedAccuracy = (correctChars / (correctChars + incorrectChars)) * 100;
+
+      assert.equal(Math.abs(wpm - expectedWpm) <= 4.0, true, `WPM ${wpm} should be within 4.0 of expected ${expectedWpm}`);
+      assert.equal(Math.abs(accuracy - expectedAccuracy) <= 2.0, true, `Accuracy ${accuracy} should be within 2.0 of expected ${expectedAccuracy}`);
+      assert.equal(result.isComplete, true);
     });
 
     test('empty typed string has 0 correct and first char current', () => {
