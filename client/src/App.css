@@ -1251,6 +1251,215 @@
   color: #94a3b8;
 }
 
+/* ========================================================
+   M7 — WPM Progression Graph Styles
+   ======================================================== */
+.graph-card {
+  width: 100%;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.graph-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.graph-subtitle {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin: 0.2rem 0 0 0;
+}
+
+.graph-truncated-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fde047;
+  background: rgba(253, 224, 71, 0.1);
+  border: 1px solid rgba(253, 224, 71, 0.25);
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+}
+
+.graph-state-container {
+  min-height: 200px;
+  background: #0b0f19;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #64748b;
+  font-size: 0.9rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.graph-canvas-wrapper {
+  position: relative;
+  width: 100%;
+  background: #0b0f19;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 1rem 0.5rem 0.5rem 0.5rem;
+  box-sizing: border-box;
+}
+
+.graph-svg {
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+  display: block;
+  overflow: visible;
+}
+
+.grid-line {
+  stroke: #1e293b;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.axis-baseline {
+  stroke: #334155;
+  stroke-width: 1.5;
+}
+
+.axis-tick-label {
+  fill: #64748b;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+}
+
+.axis-tick-label.x-label {
+  fill: #94a3b8;
+  font-weight: 600;
+}
+
+.graph-area {
+  pointer-events: none;
+}
+
+.graph-line {
+  stroke: #38bdf8;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.4));
+}
+
+.hover-trigger {
+  cursor: pointer;
+}
+
+.point-pulse {
+  fill: rgba(56, 189, 248, 0.25);
+  animation: pulse 1.5s infinite;
+}
+
+.point-circle {
+  fill: #0b0f19;
+  stroke: #38bdf8;
+  stroke-width: 2;
+  transition: all 0.15s ease-in-out;
+}
+
+.point-circle.active {
+  fill: #38bdf8;
+  stroke: #f8fafc;
+  stroke-width: 2.5;
+}
+
+.graph-single-note {
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: rgba(56, 189, 248, 0.05);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 6px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #7dd3fc;
+}
+
+.graph-tooltip {
+  position: absolute;
+  transform: translate(-50%, -115%);
+  pointer-events: none;
+  background: #111827;
+  border: 1px solid #38bdf8;
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid #1f2937;
+  padding-bottom: 0.3rem;
+}
+
+.tooltip-attempt {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.tooltip-date {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tooltip-label {
+  color: #94a3b8;
+}
+
+.tooltip-val {
+  color: #f8fafc;
+  font-weight: 600;
+}
+
+.text-cyan {
+  color: #38bdf8 !important;
+}
+
 /* Common Info Card & Status */
 .info-card {
   width: 100%;

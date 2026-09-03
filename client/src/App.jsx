@@ -153,7 +153,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="header">
-        <div className="badge">Milestone 6 &bull; Performance Sorting</div>
+        <div className="badge">Milestone 7 &bull; WPM Progression Graph</div>
       </header>
 
       <main className="hero">
@@ -255,7 +255,7 @@ function App() {
             </span>
           </div>
           <p className="milestone-note">
-            Milestone 6 Performance Sorting active. Sort your recorded typing tests by Newest, WPM: High &rarr; Low, and WPM: Low &rarr; High with combinable language and duration filters.
+            Milestone 7 WPM Progression Graph active. Visualize typing speed trends across attempts with dynamic scaling and chronological progression.
           </p>
         </div>
       </main>

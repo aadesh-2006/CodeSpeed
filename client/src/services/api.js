@@ -103,6 +103,18 @@ export const api = {
     const queryString = query.toString() ? `?${query.toString()}` : '';
     return request(`/api/performances${queryString}`, { method: 'GET' });
   },
+
+  getPerformanceGraph: (params = {}) => {
+    const query = new URLSearchParams();
+    if (params.language && params.language !== 'all') {
+      query.append('language', params.language);
+    }
+    if (params.timerSeconds && String(params.timerSeconds) !== 'all') {
+      query.append('timerSeconds', params.timerSeconds);
+    }
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    return request(`/api/performances/graph${queryString}`, { method: 'GET' });
+  },
 };
 
 export default api;

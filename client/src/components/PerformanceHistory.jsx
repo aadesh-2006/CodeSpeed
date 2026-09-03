@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { SUPPORTED_LANGUAGES, TIMER_OPTIONS } from '../data/snippets';
 import { formatTime } from '../utils/typingMetrics';
+import WpmProgressionGraph from './WpmProgressionGraph';
 
 export const SORT_MODES = [
   { id: 'newest', label: 'Newest' },
@@ -19,6 +20,13 @@ export function PerformanceHistory({ onNavigateToPractice }) {
   const [performances, setPerformances] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
 
+  // Graph data states (always complete chronological series for the active filters)
+  const [graphData, setGraphData] = useState([]);
+  const [graphLoading, setGraphLoading] = useState(true);
+  const [graphTotal, setGraphTotal] = useState(0);
+  const [graphTruncated, setGraphTruncated] = useState(false);
+
+  // Fetch paginated tabular history
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -43,9 +51,34 @@ export function PerformanceHistory({ onNavigateToPractice }) {
     }
   }, [selectedLanguage, selectedTimer, selectedSort, page]);
 
+  // Fetch chronological graph series (independent of table sort and pagination)
+  const fetchGraph = useCallback(async () => {
+    setGraphLoading(true);
+    try {
+      const res = await api.getPerformanceGraph({
+        language: selectedLanguage,
+        timerSeconds: selectedTimer,
+      });
+
+      if (res && res.data) {
+        setGraphData(res.data.graphData || []);
+        setGraphTotal(res.data.totalCount || 0);
+        setGraphTruncated(Boolean(res.data.truncated));
+      }
+    } catch (err) {
+      console.error('[PerformanceHistory] Failed to load graph data:', err.message);
+    } finally {
+      setGraphLoading(false);
+    }
+  }, [selectedLanguage, selectedTimer]);
+
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
+
+  useEffect(() => {
+    fetchGraph();
+  }, [fetchGraph]);
 
   const handleLanguageChange = (langId) => {
     setSelectedLanguage(langId);
@@ -60,6 +93,11 @@ export function PerformanceHistory({ onNavigateToPractice }) {
   const handleSortChange = (sortId) => {
     setSelectedSort(sortId);
     setPage(1); // Reset to first page on sort change
+  };
+
+  const handleRefreshAll = () => {
+    fetchHistory();
+    fetchGraph();
   };
 
   const formatTimestamp = (dateString) => {
@@ -169,12 +207,20 @@ export function PerformanceHistory({ onNavigateToPractice }) {
         </div>
       </div>
 
+      {/* WPM Progression Graph Section */}
+      <WpmProgressionGraph
+        graphData={graphData}
+        loading={graphLoading}
+        totalCount={graphTotal}
+        truncated={graphTruncated}
+      />
+
       {/* Summary / Refresh Bar */}
       <div className="history-summary-bar">
         <span className="summary-text">
           {loading ? 'Refreshing records...' : `Showing ${performances.length} of ${pagination.total} attempt${pagination.total === 1 ? '' : 's'}`}
         </span>
-        <button type="button" className="refresh-btn" onClick={fetchHistory} title="Refresh history">
+        <button type="button" className="refresh-btn" onClick={handleRefreshAll} title="Refresh history and graph">
           &#x21BB; Refresh
         </button>
       </div>
@@ -196,7 +242,7 @@ export function PerformanceHistory({ onNavigateToPractice }) {
         <div className="history-state-card error">
           <span className="error-icon">&#x26A0;</span>
           <p className="error-text">{error}</p>
-          <button type="button" className="action-btn secondary-btn compact" onClick={fetchHistory}>
+          <button type="button" className="action-btn secondary-btn compact" onClick={handleRefreshAll}>
             Try Again
           </button>
         </div>

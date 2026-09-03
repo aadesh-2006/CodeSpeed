@@ -250,3 +250,94 @@ export const getPerformances = async (req, res) => {
     });
   }
 };
+
+/**
+ * Controller to retrieve complete chronological data for WPM progression graph.
+ * Returns records strictly in createdAt ASC order, respecting language/timer filters,
+ * with sequential 1-based attempt numbers and explicit 500-record truncation metadata.
+ */
+export const getPerformanceGraph = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required. User context missing.',
+      });
+    }
+
+    const { language, timerSeconds } = req.query || {};
+    const query = { userId };
+
+    // 1. Language filter validation
+    if (language && language.toLowerCase() !== 'all') {
+      const normLang = language.toLowerCase().trim();
+      if (!SUPPORTED_LANGUAGES.includes(normLang)) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Invalid language filter: '${language}'. Must be 'all' or one of: ${SUPPORTED_LANGUAGES.join(', ')}.`,
+        });
+      }
+      query.language = normLang;
+    }
+
+    // 2. Timer filter validation
+    if (timerSeconds && String(timerSeconds).toLowerCase() !== 'all') {
+      const parsedTimer = parseInt(timerSeconds, 10);
+      if (isNaN(parsedTimer) || !VALID_TIMERS.includes(parsedTimer)) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Invalid timer filter: '${timerSeconds}'. Must be 'all' or one of: ${VALID_TIMERS.join(', ')}.`,
+        });
+      }
+      query.timerSeconds = parsedTimer;
+    }
+
+    const GRAPH_LIMIT = 500;
+    const totalCount = await Performance.countDocuments(query);
+    const isTruncated = totalCount > GRAPH_LIMIT;
+
+    let records;
+    if (isTruncated) {
+      // For meaningful progression visualization, retrieve the most recent 500 attempts
+      // by querying newest first then reversing to chronological order
+      const latestRecords = await Performance.find(query)
+        .select('wpm accuracy language difficulty timerSeconds snippetId createdAt')
+        .sort({ createdAt: -1 })
+        .limit(GRAPH_LIMIT);
+      records = latestRecords.reverse();
+    } else {
+      records = await Performance.find(query)
+        .select('wpm accuracy language difficulty timerSeconds snippetId createdAt')
+        .sort({ createdAt: 1 });
+    }
+
+    const graphData = records.map((p, index) => ({
+      id: p._id ? p._id.toString() : p.id,
+      attemptNumber: index + 1,
+      wpm: p.wpm,
+      accuracy: p.accuracy,
+      language: p.language,
+      difficulty: p.difficulty,
+      timerSeconds: p.timerSeconds,
+      snippetId: p.snippetId,
+      createdAt: p.createdAt,
+    }));
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        graphData,
+        totalCount,
+        displayedCount: graphData.length,
+        truncated: isTruncated,
+      },
+    });
+  } catch (error) {
+    console.error('[Performance Controller] Error fetching performance graph:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error fetching performance graph data.',
+    });
+  }
+};

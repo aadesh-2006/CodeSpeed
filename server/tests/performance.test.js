@@ -631,4 +631,140 @@ describe('Performance Persistence, History & Sorting API Tests', () => {
       assert.ok(resBadTimer.data.message.includes('Invalid timer filter'));
     });
   });
+
+  describe('GET /api/performances/graph — WPM Progression Graph Data', () => {
+    test('rejects unauthenticated GET /graph request with 401', async () => {
+      const res = await makeRequest('/api/performances/graph', { method: 'GET' });
+      assert.equal(res.status, 401);
+      assert.equal(res.data.status, 'error');
+    });
+
+    test('returns 200 and all graph points in chronological createdAt ASC order with 1-based attempt numbers', async () => {
+      const res = await makeRequest('/api/performances/graph', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.status, 'success');
+      assert.equal(res.data.data.graphData.length, 4);
+      assert.equal(res.data.data.totalCount, 4);
+      assert.equal(res.data.data.displayedCount, 4);
+      assert.equal(res.data.data.truncated, false);
+
+      const data = res.data.data.graphData;
+      // Chronological order: js-easy-01 (oldest) -> py-medium-01 -> py-hard-01 -> py-easy-01 (newest)
+      assert.equal(data[0].attemptNumber, 1);
+      assert.equal(data[0].snippetId, 'js-easy-01');
+      assert.equal(data[0].wpm, 65);
+
+      assert.equal(data[1].attemptNumber, 2);
+      assert.equal(data[1].snippetId, 'py-medium-01');
+      assert.equal(data[1].wpm, 80);
+
+      assert.equal(data[2].attemptNumber, 3);
+      assert.equal(data[2].snippetId, 'py-hard-01');
+      assert.equal(data[2].wpm, 85);
+
+      assert.equal(data[3].attemptNumber, 4);
+      assert.equal(data[3].snippetId, 'py-easy-01');
+      assert.equal(data[3].wpm, 80);
+    });
+
+    test('filters graph data by language and re-indexes attempt numbers starting from 1', async () => {
+      const res = await makeRequest('/api/performances/graph?language=python', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.graphData.length, 3);
+      assert.equal(res.data.data.totalCount, 3);
+
+      const data = res.data.data.graphData;
+      assert.equal(data[0].attemptNumber, 1);
+      assert.equal(data[0].snippetId, 'py-medium-01');
+      assert.equal(data[0].language, 'python');
+
+      assert.equal(data[1].attemptNumber, 2);
+      assert.equal(data[1].snippetId, 'py-hard-01');
+      assert.equal(data[1].language, 'python');
+
+      assert.equal(data[2].attemptNumber, 3);
+      assert.equal(data[2].snippetId, 'py-easy-01');
+      assert.equal(data[2].language, 'python');
+    });
+
+    test('filters graph data by timerSeconds and re-indexes attempt numbers starting from 1', async () => {
+      const res = await makeRequest('/api/performances/graph?timerSeconds=120', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.graphData.length, 1);
+      assert.equal(res.data.data.totalCount, 1);
+      assert.equal(res.data.data.graphData[0].attemptNumber, 1);
+      assert.equal(res.data.data.graphData[0].snippetId, 'py-hard-01');
+    });
+
+    test('combines language and timer filters for graph data', async () => {
+      const res = await makeRequest('/api/performances/graph?language=python&timerSeconds=60', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.graphData.length, 2);
+      assert.equal(res.data.data.graphData[0].attemptNumber, 1);
+      assert.equal(res.data.data.graphData[0].snippetId, 'py-medium-01');
+
+      assert.equal(res.data.data.graphData[1].attemptNumber, 2);
+      assert.equal(res.data.data.graphData[1].snippetId, 'py-easy-01');
+    });
+
+    test('returns empty graphData for user with no test attempts', async () => {
+      const res = await makeRequest('/api/performances/graph', {
+        method: 'GET',
+        token: emptyToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.graphData.length, 0);
+      assert.equal(res.data.data.totalCount, 0);
+      assert.equal(res.data.data.displayedCount, 0);
+      assert.equal(res.data.data.truncated, false);
+    });
+
+    test('enforces user isolation: User A graph data contains zero User B records', async () => {
+      const resA = await makeRequest('/api/performances/graph', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resA.data.data.graphData.length, 4);
+
+      const resB = await makeRequest('/api/performances/graph', {
+        method: 'GET',
+        token: otherToken,
+      });
+      assert.equal(resB.data.data.graphData.length, 2);
+      for (const p of resB.data.data.graphData) {
+        assert.ok(p.language === 'java' || p.language === 'cpp');
+      }
+    });
+
+    test('rejects invalid filter query parameters with 400', async () => {
+      const resBadLang = await makeRequest('/api/performances/graph?language=golang', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resBadLang.status, 400);
+
+      const resBadTimer = await makeRequest('/api/performances/graph?timerSeconds=50', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resBadTimer.status, 400);
+    });
+  });
 });

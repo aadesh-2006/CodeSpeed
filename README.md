@@ -236,6 +236,7 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 | `GET` | `/api/auth/me` | Fetch authenticated user profile | None |
 | `POST` | `/api/performances` | Record a completed typing performance | `{ "language": "...", "difficulty": "...", "timerSeconds": 60, "wpm": 75, "accuracy": 98.5, "correctChars": 375, "incorrectChars": 6, "elapsedSeconds": 60, "snippetId": "..." }` |
 | `GET` | `/api/performances` | Retrieve user performance history with optional query filters and sorting (`?language=...&timerSeconds=...&sort=newest|wpm_desc|wpm_asc&page=...&limit=...`) | None |
+| `GET` | `/api/performances/graph` | Retrieve complete chronological WPM progression dataset (`createdAt ASC`) with sequential 1-based attempt numbering (`?language=...&timerSeconds=...`) | None |
 
 ---
 
@@ -248,3 +249,4 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 - [x] **Milestone 4 (M4)**: Performance Persistence, MongoDB Performance model with user reference and strict validation, authenticated `POST /api/performances` endpoint with server-derived identity, client deduplication, resilient non-blocking UI, and full integration test coverage.
 - [x] **Milestone 5 (M5)**: Performance History, authenticated `GET /api/performances` with server-side query filtering (`language` and `timerSeconds`), pagination, user isolation, PerformanceHistory view with combinable filters, empty/loading/error states, and direct navigation from test results.
 - [x] **Milestone 6 (M6)**: Performance Sorting, server-side validated WPM sorting (`newest`, `wpm_desc`, `wpm_asc`) with deterministic secondary tie-breaking, pagination ordering preservation, and interactive Sort By controls in Performance History.
+- [x] **Milestone 7 (M7)**: WPM Progression Graph, responsive SVG visualization of typing speed improvement across sequential attempts, chronological ordering (`createdAt ASC`), dynamic numeric Y-axis bounds/ticks, interactive hover tooltips, filter integration, single/multi-point handling, and 500-attempt safety capping with explicit notice.
