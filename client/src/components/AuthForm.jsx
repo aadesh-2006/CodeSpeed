@@ -53,6 +53,7 @@ export function AuthForm({ onAuthSuccess }) {
         });
       } else {
         res = await api.login({
+          identifier: email.trim(),
           email: email.trim(),
           password,
         });
@@ -117,15 +118,17 @@ export function AuthForm({ onAuthSuccess }) {
         )}
 
         <div className="form-group">
-          <label htmlFor="email">Email</label>
+          <label htmlFor="email">
+            {mode === 'login' ? 'Username or Email' : 'Email'}
+          </label>
           <input
             id="email"
-            type="email"
-            placeholder="developer@example.com"
+            type={mode === 'login' ? 'text' : 'email'}
+            placeholder={mode === 'login' ? 'Enter username or email' : 'developer@example.com'}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={loading}
-            autoComplete="email"
+            autoComplete={mode === 'login' ? 'username' : 'email'}
             required
           />
         </div>

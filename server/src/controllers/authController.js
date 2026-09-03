@@ -128,23 +128,31 @@ export const signup = async (req, res) => {
  */
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, username, identifier, password } = req.body || {};
+    const loginIdentifier = (identifier || email || username || '').trim();
 
-    if (!email || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({
         status: 'error',
-        message: 'Email and password are required.',
+        message: 'Username or email and password are required.',
       });
     }
 
-    const trimmedEmail = email.trim().toLowerCase();
+    // Escape special regex characters in username for safe query matching
+    const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // Find user by email
-    const user = await User.findOne({ email: trimmedEmail });
+    // Find user by either email (case-insensitive) or username (case-insensitive)
+    const user = await User.findOne({
+      $or: [
+        { email: loginIdentifier.toLowerCase() },
+        { username: { $regex: new RegExp(`^${escapeRegex(loginIdentifier)}$`, 'i') } },
+      ],
+    });
+
     if (!user) {
       return res.status(401).json({
         status: 'error',
-        message: 'Invalid email or password.',
+        message: 'Invalid username, email, or password.',
       });
     }
 
@@ -153,7 +161,7 @@ export const login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         status: 'error',
-        message: 'Invalid email or password.',
+        message: 'Invalid username, email, or password.',
       });
     }
 

@@ -169,7 +169,7 @@ describe('Authentication & User Profile API Tests', () => {
   });
 
   describe('POST /api/auth/login', () => {
-    test('correct credentials returns 200 with valid JWT and safe user details', async () => {
+    test('login with valid email returns 200 with valid JWT and safe user details', async () => {
       const res = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -190,7 +190,71 @@ describe('Authentication & User Profile API Tests', () => {
       assert.equal(data.user.passwordHash, undefined);
     });
 
-    test('incorrect password returns 401', async () => {
+    test('login with valid username returns 200 with valid JWT and safe user details', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'testpilot',
+          password: 'Password123!',
+        }),
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.status, 'success');
+      assert.ok(data.token);
+      assert.ok(data.user);
+      assert.equal(data.user.username, 'testpilot');
+      assert.equal(data.user.email, 'pilot@example.com');
+      assert.equal(data.user.passwordHash, undefined);
+    });
+
+    test('login with identifier field matching username returns 200', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: 'testpilot',
+          password: 'Password123!',
+        }),
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.status, 'success');
+      assert.ok(data.token);
+    });
+
+    test('case handling: normalized case-insensitive login with uppercase email and mixed-case username', async () => {
+      // Uppercase email
+      const emailRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'PILOT@EXAMPLE.COM',
+          password: 'Password123!',
+        }),
+      });
+      assert.equal(emailRes.status, 200);
+      const emailData = await emailRes.json();
+      assert.equal(emailData.status, 'success');
+
+      // Mixed-case username
+      const userRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'TestPilot',
+          password: 'Password123!',
+        }),
+      });
+      assert.equal(userRes.status, 200);
+      const userData = await userRes.json();
+      assert.equal(userData.status, 'success');
+    });
+
+    test('wrong password using valid email returns 401', async () => {
       const res = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -206,12 +270,28 @@ describe('Authentication & User Profile API Tests', () => {
       assert.equal(data.token, undefined);
     });
 
-    test('nonexistent user returns 401', async () => {
+    test('wrong password using valid username returns 401', async () => {
       const res = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: 'nonexistent@example.com',
+          username: 'testpilot',
+          password: 'WrongPassword!',
+        }),
+      });
+
+      assert.equal(res.status, 401);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+      assert.equal(data.token, undefined);
+    });
+
+    test('invalid username or email + password returns 401', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: 'nonexistent_user',
           password: 'Password123!',
         }),
       });
@@ -220,6 +300,20 @@ describe('Authentication & User Profile API Tests', () => {
       const data = await res.json();
       assert.equal(data.status, 'error');
       assert.equal(data.token, undefined);
+    });
+
+    test('missing identifier or password returns 400', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          password: 'Password123!',
+        }),
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
     });
   });
 
