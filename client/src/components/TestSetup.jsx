@@ -15,82 +15,83 @@ export function TestSetup({
   const isRanked = selectedMode === 'ranked';
 
   return (
-    <div className={`test-setup-card ${isRanked ? 'ranked-mode-card' : ''}`}>
-      {/* 0. Mode Selection (Practice vs Ranked) */}
-      <div className="setup-section mode-select-section">
-        <label className="section-label">Select Mode</label>
-        <div className="mode-toggle-pills">
+    <div className={`setup-panel ${isRanked ? 'ranked-setup' : ''}`}>
+      {/* Mode Selection Control */}
+      <div className="setup-block">
+        <div className="setup-block-header">
+          <span className="setup-label">Mode</span>
+          <span className="setup-hint">
+            {isRanked ? 'Competitive ranked test (earns badges)' : 'Casual unranked practice'}
+          </span>
+        </div>
+        <div className="setup-pill-group">
           <button
             type="button"
-            className={`mode-pill practice-pill ${selectedMode === 'practice' ? 'active' : ''}`}
+            className={`setup-pill ${selectedMode === 'practice' ? 'active' : ''}`}
             onClick={() => setSelectedMode && setSelectedMode('practice')}
           >
-            <span className="mode-icon">⌨️</span>
-            <div className="mode-pill-text">
-              <strong>Practice</strong>
-              <small>Casual, private practice</small>
-            </div>
+            Practice
           </button>
-
           <button
             type="button"
-            className={`mode-pill ranked-pill ${selectedMode === 'ranked' ? 'active' : ''}`}
+            className={`setup-pill ranked-pill ${selectedMode === 'ranked' ? 'active' : ''}`}
             onClick={() => setSelectedMode && setSelectedMode('ranked')}
           >
-            <span className="mode-icon">🏆</span>
-            <div className="mode-pill-text">
-              <strong>Ranked</strong>
-              <small>Competitive, earns badges</small>
-            </div>
+            Ranked
           </button>
         </div>
       </div>
 
-      {/* 1. Language Selection */}
-      <div className="setup-section">
-        <label className="section-label">Select Programming Language</label>
-        <div className="language-grid">
+      {/* Language Selection */}
+      <div className="setup-block">
+        <div className="setup-block-header">
+          <span className="setup-label">Language</span>
+        </div>
+        <div className="setup-pill-group language-pill-group">
           {SUPPORTED_LANGUAGES.map((lang) => (
             <button
               key={lang.id}
               type="button"
-              className={`lang-pill ${selectedLanguage === lang.id ? 'active' : ''}`}
+              className={`setup-pill ${selectedLanguage === lang.id ? 'active' : ''}`}
               onClick={() => setSelectedLanguage(lang.id)}
             >
-              <span className="lang-icon">&gt;</span>
-              <span className="lang-name">{lang.name}</span>
+              {lang.name}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 2. Difficulty Selection */}
-      <div className="setup-section">
-        <label className="section-label">Select Difficulty</label>
-        <div className="difficulty-grid">
+      {/* Difficulty Selection */}
+      <div className="setup-block">
+        <div className="setup-block-header">
+          <span className="setup-label">Difficulty</span>
+        </div>
+        <div className="setup-pill-group">
           {DIFFICULTY_LEVELS.map((diff) => (
             <button
               key={diff.id}
               type="button"
-              className={`diff-pill ${diff.id} ${selectedDifficulty === diff.id ? 'active' : ''}`}
+              className={`setup-pill diff-${diff.id} ${selectedDifficulty === diff.id ? 'active' : ''}`}
               onClick={() => setSelectedDifficulty(diff.id)}
             >
-              <span className="diff-dot"></span>
-              <span className="diff-name">{diff.name}</span>
+              <span className="diff-indicator"></span>
+              {diff.name}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 3. Duration Selection */}
-      <div className="setup-section">
-        <label className="section-label">Select Duration</label>
-        <div className="timer-grid">
+      {/* Duration Selection */}
+      <div className="setup-block">
+        <div className="setup-block-header">
+          <span className="setup-label">Duration</span>
+        </div>
+        <div className="setup-pill-group">
           {TIMER_OPTIONS.map((timer) => (
             <button
               key={timer.seconds}
               type="button"
-              className={`timer-pill ${selectedDuration === timer.seconds ? 'active' : ''}`}
+              className={`setup-pill ${selectedDuration === timer.seconds ? 'active' : ''}`}
               onClick={() => setSelectedDuration(timer.seconds)}
             >
               {timer.label}
@@ -99,14 +100,14 @@ export function TestSetup({
         </div>
       </div>
 
-      {/* Start Action */}
-      <div className="setup-action">
+      {/* Action CTA */}
+      <div className="setup-footer">
         <button
           type="button"
-          className={`start-test-btn ${isRanked ? 'start-ranked-btn' : ''}`}
+          className={`btn ${isRanked ? 'btn-amber' : 'btn-primary'} btn-lg`}
           onClick={onStartTest}
         >
-          {isRanked ? '🏆 Start Ranked Coding Test' : '>_ Start Coding Test'}
+          {isRanked ? 'Start Ranked Test' : 'Start Practice Test'}
         </button>
       </div>
     </div>

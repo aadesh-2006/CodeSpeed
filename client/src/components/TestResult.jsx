@@ -24,80 +24,101 @@ export function TestResult({
   const displayDiff = difficulty ? difficulty.charAt(0).toUpperCase() + difficulty.slice(1) : '';
 
   return (
-    <div className={`test-result-card ${isRanked ? 'ranked-result-card' : ''}`}>
+    <div className={`result-panel ${isRanked ? 'ranked-result' : ''}`}>
+      {/* Header */}
       <div className="result-header">
-        <div className="result-badges-row">
-          <span className={`result-badge ${isRanked ? 'ranked-badge-pill' : 'practice-badge-pill'}`}>
-            {isRanked ? '🏆 Ranked Test Complete' : '⌨️ Practice Test Complete'}
+        <div className="result-status-row">
+          <span className={`status-pill ${isRanked ? 'ranked' : 'practice'}`}>
+            {isRanked ? 'Ranked Test Complete' : 'Practice Test Complete'}
           </span>
           {saveStatus === 'saving' && (
-            <span className="save-badge saving">Saving performance...</span>
+            <span className="save-indicator saving">Saving...</span>
           )}
           {saveStatus === 'saved' && (
-            <span className="save-badge saved">&#x2714; Saved to account</span>
+            <span className="save-indicator saved">&#x2714; Saved</span>
           )}
           {saveStatus === 'error' && (
-            <span className="save-badge error">Local result only</span>
+            <span className="save-indicator error">Local only</span>
           )}
         </div>
+
         <h2 className="result-title">Performance Summary</h2>
         {languageName && (
           <p className="result-subtitle">
-            {languageName} {displayDiff ? `• ${displayDiff}` : ''} Coding Test
+            {languageName} {displayDiff ? `\u2022 ${displayDiff}` : ''}
           </p>
         )}
       </div>
 
-      <div className="result-hero-stats">
-        <div className={`hero-stat-box ${isRanked ? 'ranked-hero' : 'primary'}`}>
-          <div className="stat-value">{wpm}</div>
-          <div className="stat-label">Words Per Minute</div>
+      {/* Hero Stats */}
+      <div className="result-hero-row">
+        <div className={`hero-stat-card ${isRanked ? 'ranked-accent' : 'primary-accent'}`}>
+          <span className="hero-stat-value">{wpm}</span>
+          <span className="hero-stat-label">Words Per Minute</span>
         </div>
-        <div className="hero-stat-box secondary">
-          <div className="stat-value">{accuracy}%</div>
-          <div className="stat-label">Accuracy</div>
+        <div className="hero-stat-card">
+          <span className="hero-stat-value text-green">{accuracy}%</span>
+          <span className="hero-stat-label">Accuracy</span>
         </div>
       </div>
 
       {isRanked && (
-        <div className="ranked-congrats-banner">
-          <span>⚡ Ranked test recorded! Check your Dashboard for updated ranked stats &amp; badges.</span>
+        <div className="ranked-notice-bar">
+          <span>Ranked performance recorded. Check Dashboard for updated milestones and badges.</span>
         </div>
       )}
 
-      <div className="result-details-grid">
-        <div className="detail-item">
-          <span className="detail-label">Correct Characters</span>
-          <span className="detail-value text-green">{correctChars}</span>
+      {/* Breakdown Grid */}
+      <div className="result-breakdown-grid">
+        <div className="breakdown-item">
+          <span className="breakdown-label">Correct</span>
+          <span className="breakdown-val text-green">{correctChars}</span>
         </div>
-        <div className="detail-item">
-          <span className="detail-label">Incorrect Characters</span>
-          <span className="detail-value text-red">{incorrectChars}</span>
+        <div className="breakdown-item">
+          <span className="breakdown-label">Errors</span>
+          <span className="breakdown-val text-red">{incorrectChars}</span>
         </div>
-        <div className="detail-item">
-          <span className="detail-label">Total Typed</span>
-          <span className="detail-value">{totalTyped}</span>
+        <div className="breakdown-item">
+          <span className="breakdown-label">Total Typed</span>
+          <span className="breakdown-val">{totalTyped}</span>
         </div>
-        <div className="detail-item">
-          <span className="detail-label">Time Elapsed</span>
-          <span className="detail-value">{timeElapsedFormatted}</span>
+        <div className="breakdown-item">
+          <span className="breakdown-label">Time Elapsed</span>
+          <span className="breakdown-val">{timeElapsedFormatted}</span>
         </div>
       </div>
 
+      {/* Actions */}
       <div className="result-actions">
-        <button type="button" className={`action-btn ${isRanked ? 'start-ranked-btn' : 'primary-btn'}`} onClick={onTryAgain}>
+        <button
+          type="button"
+          className={`btn ${isRanked ? 'btn-amber' : 'btn-primary'}`}
+          onClick={onTryAgain}
+        >
           Try Again
         </button>
-        <button type="button" className="action-btn secondary-btn" onClick={onChangeSettings}>
-          Change Settings
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onChangeSettings}
+        >
+          Settings
         </button>
         {onViewDashboard && (
-          <button type="button" className="action-btn secondary-btn" onClick={onViewDashboard}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onViewDashboard}
+          >
             Dashboard
           </button>
         )}
         {onViewHistory && (
-          <button type="button" className="action-btn history-btn" onClick={onViewHistory}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onViewHistory}
+          >
             History &rarr;
           </button>
         )}

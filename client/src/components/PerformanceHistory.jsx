@@ -137,49 +137,53 @@ export function PerformanceHistory({ initialMode = 'practice', onNavigateToPract
   const isRanked = selectedMode === 'ranked';
 
   return (
-    <div className={`history-container ${isRanked ? 'history-ranked-theme' : ''}`}>
-      {/* History Header & Practice CTA */}
-      <div className="history-header">
-        <div>
-          <h2 className="history-title">Performance History</h2>
-          <p className="history-subtitle">
+    <div className={`history-view ${isRanked ? 'ranked-theme' : ''}`}>
+      {/* Header */}
+      <div className="view-header">
+        <div className="view-title-group">
+          <h1 className="view-title">Performance History</h1>
+          <p className="view-subtitle">
             {isRanked
-              ? 'Review verified competitive ranked attempts and WPM progression.'
-              : 'Review casual practice sessions and training history.'}
+              ? 'Verified competitive ranked attempts and progression.'
+              : 'Casual practice history and typing speed progression.'}
           </p>
         </div>
-        <button type="button" className={`action-btn ${isRanked ? 'start-ranked-btn' : 'primary-btn'} compact`} onClick={onNavigateToPractice}>
-          {isRanked ? '🏆 Take Ranked Test' : '>_ Take Practice Test'}
-        </button>
-      </div>
 
-      {/* Filter Bar */}
-      <div className="history-filter-card">
-        {/* Mode Selector */}
-        <div className="filter-group">
-          <label className="filter-label">Mode</label>
-          <div className="filter-pill-row">
+        <div className="view-actions">
+          {/* Mode Switcher */}
+          <div className="segmented-control">
             <button
               type="button"
-              className={`filter-pill practice ${selectedMode === 'practice' ? 'active' : ''}`}
+              className={`segment-btn ${!isRanked ? 'active' : ''}`}
               onClick={() => handleModeChange('practice')}
             >
-              ⌨️ Practice History
+              Practice
             </button>
             <button
               type="button"
-              className={`filter-pill ranked ${selectedMode === 'ranked' ? 'active' : ''}`}
+              className={`segment-btn ${isRanked ? 'active ranked' : ''}`}
               onClick={() => handleModeChange('ranked')}
             >
-              🏆 Ranked History
+              Ranked
             </button>
           </div>
-        </div>
 
-        {/* Sort Order Control */}
-        <div className="filter-group">
-          <label className="filter-label">Sort By</label>
-          <div className="filter-pill-row">
+          <button
+            type="button"
+            className={`btn ${isRanked ? 'btn-amber' : 'btn-primary'} btn-sm`}
+            onClick={onNavigateToPractice}
+          >
+            {isRanked ? 'Take Ranked Test' : 'Take Practice Test'}
+          </button>
+        </div>
+      </div>
+
+      {/* Filter Toolbar */}
+      <div className="filter-toolbar">
+        {/* Sort Filter */}
+        <div className="filter-field">
+          <span className="filter-label">Sort:</span>
+          <div className="filter-pill-group">
             {SORT_MODES.map((sortMode) => (
               <button
                 key={sortMode.id}
@@ -194,15 +198,15 @@ export function PerformanceHistory({ initialMode = 'practice', onNavigateToPract
         </div>
 
         {/* Language Filter */}
-        <div className="filter-group">
-          <label className="filter-label">Filter by Language</label>
-          <div className="filter-pill-row">
+        <div className="filter-field">
+          <span className="filter-label">Language:</span>
+          <div className="filter-pill-group">
             <button
               type="button"
               className={`filter-pill ${selectedLanguage === 'all' ? 'active' : ''}`}
               onClick={() => handleLanguageChange('all')}
             >
-              All Languages
+              All
             </button>
             {SUPPORTED_LANGUAGES.map((lang) => (
               <button
@@ -217,16 +221,16 @@ export function PerformanceHistory({ initialMode = 'practice', onNavigateToPract
           </div>
         </div>
 
-        {/* Timer Filter */}
-        <div className="filter-group">
-          <label className="filter-label">Filter by Duration</label>
-          <div className="filter-pill-row">
+        {/* Duration Filter */}
+        <div className="filter-field">
+          <span className="filter-label">Duration:</span>
+          <div className="filter-pill-group">
             <button
               type="button"
               className={`filter-pill ${selectedTimer === 'all' ? 'active' : ''}`}
               onClick={() => handleTimerChange('all')}
             >
-              All Durations
+              All
             </button>
             {TIMER_OPTIONS.map((timer) => (
               <button
@@ -250,34 +254,29 @@ export function PerformanceHistory({ initialMode = 'practice', onNavigateToPract
         truncated={graphTruncated}
       />
 
-      {/* Summary / Refresh Bar */}
-      <div className="history-summary-bar">
-        <span className="summary-text">
+      {/* Summary / Counter Bar */}
+      <div className="history-count-bar">
+        <span className="history-count-text">
           {loading ? 'Refreshing records...' : `Showing ${performances.length} of ${pagination.total} ${isRanked ? 'ranked' : 'practice'} attempt${pagination.total === 1 ? '' : 's'}`}
         </span>
-        <button type="button" className="refresh-btn" onClick={handleRefreshAll} title="Refresh history and graph">
+        <button type="button" className="btn btn-secondary btn-sm" onClick={handleRefreshAll} title="Refresh records">
           &#x21BB; Refresh
         </button>
       </div>
 
       {/* Loading State */}
       {loading && (
-        <div className="history-state-card loading">
-          <div className="skeleton-loader">
-            <div className="skeleton-line title"></div>
-            <div className="skeleton-line row"></div>
-            <div className="skeleton-line row"></div>
-          </div>
-          <p>Loading your {isRanked ? 'ranked' : 'practice'} records...</p>
+        <div className="panel state-panel loading">
+          <div className="loading-spinner"></div>
+          <p>Loading {isRanked ? 'ranked' : 'practice'} records...</p>
         </div>
       )}
 
       {/* Error State */}
       {!loading && error && (
-        <div className="history-state-card error">
-          <span className="error-icon">&#x26A0;</span>
+        <div className="panel state-panel error">
           <p className="error-text">{error}</p>
-          <button type="button" className="action-btn secondary-btn compact" onClick={handleRefreshAll}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={handleRefreshAll}>
             Try Again
           </button>
         </div>
@@ -285,80 +284,80 @@ export function PerformanceHistory({ initialMode = 'practice', onNavigateToPract
 
       {/* Empty State */}
       {!loading && !error && performances.length === 0 && (
-        <div className="history-state-card empty">
-          <div className="empty-symbol">{isRanked ? '🏆' : '>_'}</div>
+        <div className="panel state-panel empty">
+          <div className="empty-glyph">&gt;_</div>
           <h3>No {isRanked ? 'Ranked' : 'Practice'} Records Found</h3>
           <p>
             {selectedLanguage !== 'all' || selectedTimer !== 'all'
-              ? `No ${isRanked ? 'ranked' : 'practice'} tests match your selected filters.`
+              ? `No ${isRanked ? 'ranked' : 'practice'} tests match the selected filters.`
               : `You have not completed any ${isRanked ? 'ranked' : 'practice'} tests yet.`}
           </p>
           <button
             type="button"
-            className={`action-btn ${isRanked ? 'start-ranked-btn' : 'primary-btn'}`}
+            className={`btn ${isRanked ? 'btn-amber' : 'btn-primary'}`}
             onClick={onNavigateToPractice}
           >
-            {isRanked ? 'Start a Ranked Test' : 'Start Your First Test'}
+            {isRanked ? 'Start a Ranked Test' : 'Start a Practice Test'}
           </button>
         </div>
       )}
 
-      {/* Records List */}
+      {/* Records Table */}
       {!loading && !error && performances.length > 0 && (
-        <div className="history-list">
-          {performances.map((perf) => {
-            const diffClass = (perf.difficulty || 'medium').toLowerCase();
-            const diffDisplay = perf.difficulty ? perf.difficulty.charAt(0).toUpperCase() + perf.difficulty.slice(1) : 'Medium';
-            const langName = getLanguageName(perf.language);
-            const timerLabel = getTimerLabel(perf.timerSeconds);
-            const formattedElapsed = formatTime(perf.elapsedSeconds);
-            const isPerfRanked = perf.mode === 'ranked';
+        <div className="panel history-table-panel">
+          <div className="data-table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Mode</th>
+                  <th>Language</th>
+                  <th>Difficulty</th>
+                  <th>Duration</th>
+                  <th>WPM</th>
+                  <th>Accuracy</th>
+                  <th>Correct / Errors</th>
+                  <th>Time</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {performances.map((perf) => {
+                  const isPerfRanked = perf.mode === 'ranked';
+                  const diffClass = (perf.difficulty || 'medium').toLowerCase();
+                  const diffDisplay = perf.difficulty ? perf.difficulty.charAt(0).toUpperCase() + perf.difficulty.slice(1) : 'Medium';
+                  const langName = getLanguageName(perf.language);
+                  const timerLabel = getTimerLabel(perf.timerSeconds);
+                  const formattedElapsed = formatTime(perf.elapsedSeconds);
 
-            return (
-              <div key={perf.id || perf._id} className={`history-card ${isPerfRanked ? 'ranked-card' : ''}`}>
-                <div className="card-top">
-                  <div className="badge-group">
-                    <span className={`mode-badge-tag ${isPerfRanked ? 'ranked' : 'practice'}`}>
-                      {isPerfRanked ? '🏆 Ranked' : '⌨️ Practice'}
-                    </span>
-                    <span className="lang-tag">{langName}</span>
-                    <span className={`diff-tag ${diffClass}`}>{diffDisplay}</span>
-                    <span className="timer-badge">&#x23F1; {timerLabel}</span>
-                  </div>
-                  <div className="attempt-date">{formatTimestamp(perf.createdAt)}</div>
-                </div>
-
-                <div className="card-stats-grid">
-                  <div className="stat-block wpm-block">
-                    <span className={`stat-num ${isPerfRanked ? 'text-amber' : 'text-cyan'}`}>{perf.wpm}</span>
-                    <span className="stat-lbl">WPM</span>
-                  </div>
-                  <div className="stat-block accuracy-block">
-                    <span className="stat-num">{perf.accuracy}%</span>
-                    <span className="stat-lbl">Accuracy</span>
-                  </div>
-                  <div className="stat-block">
-                    <span className="stat-num text-green">{perf.correctChars}</span>
-                    <span className="stat-lbl">Correct</span>
-                  </div>
-                  <div className="stat-block">
-                    <span className="stat-num text-red">{perf.incorrectChars}</span>
-                    <span className="stat-lbl">Errors</span>
-                  </div>
-                  <div className="stat-block">
-                    <span className="stat-num">{formattedElapsed}</span>
-                    <span className="stat-lbl">Time</span>
-                  </div>
-                </div>
-
-                {perf.snippetId && (
-                  <div className="card-bottom">
-                    <span className="snippet-ref">Snippet: <code>{perf.snippetId}</code></span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  return (
+                    <tr key={perf.id || perf._id} className={isPerfRanked ? 'row-ranked' : ''}>
+                      <td>
+                        <span className={`badge-mode ${isPerfRanked ? 'ranked' : 'practice'}`}>
+                          {isPerfRanked ? 'Ranked' : 'Practice'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="badge-tag">{langName}</span>
+                      </td>
+                      <td>
+                        <span className={`diff-tag ${diffClass}`}>{diffDisplay}</span>
+                      </td>
+                      <td className="text-muted">{timerLabel}</td>
+                      <td>
+                        <strong className={isPerfRanked ? 'text-amber' : 'text-cyan'}>{perf.wpm} WPM</strong>
+                      </td>
+                      <td className="text-green">{perf.accuracy}%</td>
+                      <td className="text-muted font-mono">
+                        <span className="text-green">{perf.correctChars}</span> / <span className="text-red">{perf.incorrectChars}</span>
+                      </td>
+                      <td className="text-muted font-mono">{formattedElapsed}</td>
+                      <td className="text-muted">{formatTimestamp(perf.createdAt)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -367,18 +366,18 @@ export function PerformanceHistory({ initialMode = 'practice', onNavigateToPract
         <div className="pagination-bar">
           <button
             type="button"
-            className="page-btn"
+            className="btn btn-secondary btn-sm"
             disabled={pagination.page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
             &larr; Previous
           </button>
-          <span className="page-indicator">
+          <span className="pagination-info">
             Page <strong>{pagination.page}</strong> of <strong>{pagination.totalPages}</strong>
           </span>
           <button
             type="button"
-            className="page-btn"
+            className="btn btn-secondary btn-sm"
             disabled={pagination.page >= pagination.totalPages}
             onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
           >

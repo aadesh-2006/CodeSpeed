@@ -101,119 +101,115 @@ export function Dashboard({
   const isRanked = dashboardMode === 'ranked';
 
   return (
-    <div className={`dashboard-container ${isRanked ? 'dashboard-ranked-theme' : ''}`}>
-      {/* Dashboard Top Greeting & CTA Bar */}
-      <div className="dashboard-header">
-        <div>
-          <h2 className="dashboard-title">
-            Welcome back, <span className={isRanked ? 'text-amber' : 'text-cyan'}>{user?.username || 'Coder'}</span>
-          </h2>
-          <p className="dashboard-subtitle">
+    <div className={`dashboard-view ${isRanked ? 'ranked-theme' : ''}`}>
+      {/* Top Header & Mode Toggle Bar */}
+      <div className="view-header">
+        <div className="view-title-group">
+          <h1 className="view-title">
+            Dashboard
+          </h1>
+          <p className="view-subtitle">
             {isRanked
-              ? 'Ranked competitive progression, personal bests, and unlocked badges.'
-              : 'Casual practice statistics, language breakdown, and typing progress.'}
+              ? 'Competitive ranked progression, milestone achievements, and verified statistics.'
+              : 'Casual practice statistics, language breakdown, and typing speed.'}
           </p>
         </div>
 
-        <div className="dashboard-header-actions">
+        <div className="view-actions">
+          {/* Mode Switcher Segmented Control */}
+          <div className="segmented-control">
+            <button
+              type="button"
+              className={`segment-btn ${!isRanked ? 'active' : ''}`}
+              onClick={() => setDashboardMode('practice')}
+            >
+              Practice
+            </button>
+            <button
+              type="button"
+              className={`segment-btn ${isRanked ? 'active ranked' : ''}`}
+              onClick={() => setDashboardMode('ranked')}
+            >
+              Ranked
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setPrivacyModalOpen(true)}
+            title="Configure practice visibility"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <span>{user?.practiceStatsVisibility === 'public' ? 'Public' : 'Private'}</span>
+          </button>
+
           {onViewPublicProfile && (
             <button
               type="button"
-              className="action-btn secondary-btn compact"
+              className="btn btn-secondary btn-sm"
               onClick={() => onViewPublicProfile(user?.username)}
             >
-              🌐 Public Profile
+              Profile
             </button>
           )}
 
           <button
             type="button"
-            className="action-btn secondary-btn compact"
-            onClick={() => setPrivacyModalOpen(true)}
-            title="Configure practice stats privacy"
-          >
-            {user?.practiceStatsVisibility === 'public' ? '🌐 Public Stats' : '🔒 Private Stats'}
-          </button>
-
-          <button
-            type="button"
-            className="action-btn primary-btn compact"
+            className={`btn ${isRanked ? 'btn-amber' : 'btn-primary'} btn-sm`}
             onClick={isRanked ? onNavigateToRanked : onNavigateToPractice}
           >
-            {isRanked ? '🏆 Start Ranked' : '>_ Start Practice'}
+            {isRanked ? 'Start Ranked Test' : 'Start Practice Test'}
           </button>
 
           <button
             type="button"
-            className="refresh-btn"
+            className="btn btn-icon btn-sm"
             onClick={() => {
               fetchSummary();
               if (isRanked) fetchBadges();
             }}
-            title="Refresh dashboard"
+            title="Refresh statistics"
           >
             &#x21BB;
           </button>
         </div>
       </div>
 
-      {/* Mode Switcher Tabs */}
-      <div className="dashboard-mode-tabs">
-        <button
-          type="button"
-          className={`dash-mode-tab ${!isRanked ? 'active practice' : ''}`}
-          onClick={() => setDashboardMode('practice')}
-        >
-          <span className="tab-icon">⌨️</span>
-          <span>Practice Overview</span>
-        </button>
-
-        <button
-          type="button"
-          className={`dash-mode-tab ${isRanked ? 'active ranked' : ''}`}
-          onClick={() => setDashboardMode('ranked')}
-        >
-          <span className="tab-icon">🏆</span>
-          <span>Ranked Overview &amp; Badges</span>
-        </button>
-      </div>
-
       {/* Loading State */}
       {loading && (
-        <div className="dashboard-state-card loading">
-          <div className="skeleton-loader">
-            <div className="skeleton-line title"></div>
-            <div className="skeleton-line row"></div>
-            <div className="skeleton-line row"></div>
-          </div>
-          <p>Loading {isRanked ? 'ranked' : 'practice'} summary...</p>
+        <div className="panel state-panel loading">
+          <div className="loading-spinner"></div>
+          <p>Loading {isRanked ? 'ranked' : 'practice'} statistics...</p>
         </div>
       )}
 
       {/* Error State */}
       {!loading && error && (
-        <div className="dashboard-state-card error">
-          <span className="error-icon">&#x26A0;</span>
+        <div className="panel state-panel error">
           <p className="error-text">{error}</p>
-          <button type="button" className="action-btn secondary-btn compact" onClick={fetchSummary}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={fetchSummary}>
             Try Again
           </button>
         </div>
       )}
 
-      {/* Fresh Account Empty State */}
+      {/* Empty State */}
       {!loading && !error && summary.totalTests === 0 && (
-        <div className="dashboard-state-card empty">
-          <div className="empty-symbol">{isRanked ? '🏆' : '>_'}</div>
-          <h3>{isRanked ? 'No Ranked Attempts Yet' : 'Welcome to CodeSpeed!'}</h3>
+        <div className="panel state-panel empty">
+          <div className="empty-glyph">&gt;_</div>
+          <h3>{isRanked ? 'No Ranked Attempts Recorded' : 'No Practice Attempts Yet'}</h3>
           <p>
             {isRanked
-              ? 'Complete your first competitive ranked typing test to start earning badges and climb your WPM milestones!'
-              : "You haven't completed any practice tests yet. Take your first test to unlock your stats dashboard!"}
+              ? 'Complete a ranked typing test to record verified performance records and unlock milestone badges.'
+              : 'Complete your first coding typing test to generate your performance dashboard.'}
           </p>
           <button
             type="button"
-            className={`action-btn ${isRanked ? 'start-ranked-btn' : 'primary-btn'}`}
+            className={`btn ${isRanked ? 'btn-amber' : 'btn-primary'}`}
             onClick={isRanked ? onNavigateToRanked : onNavigateToPractice}
           >
             {isRanked ? 'Start First Ranked Test' : 'Start Your First Test'}
@@ -223,145 +219,132 @@ export function Dashboard({
 
       {/* Populated Dashboard Content */}
       {!loading && !error && summary.totalTests > 0 && (
-        <div className="dashboard-content">
-          {/* Key Metrics Grid */}
-          <div className="metrics-grid">
-            {/* Personal Best Card */}
-            <div className={`metric-card pb-card ${isRanked ? 'ranked' : ''}`}>
-              <div className="metric-card-top">
-                <span className="metric-icon">&#x1F3C6;</span>
-                <span className="metric-label">{isRanked ? 'Ranked Best' : 'Practice Best'}</span>
-              </div>
-              <div className="metric-value-row">
-                <span className={`metric-value ${isRanked ? 'text-amber' : 'text-cyan'}`}>
+        <div className="dashboard-grid">
+          {/* Key Metrics Row */}
+          <div className="stats-row">
+            {/* Best WPM */}
+            <div className={`stat-card ${isRanked ? 'stat-ranked' : ''}`}>
+              <span className="stat-label">{isRanked ? 'Ranked Best' : 'Personal Best'}</span>
+              <div className="stat-value-group">
+                <span className={`stat-number ${isRanked ? 'text-amber' : 'text-cyan'}`}>
                   {summary.personalBest?.wpm || 0}
                 </span>
-                <span className="metric-unit">WPM</span>
+                <span className="stat-unit">WPM</span>
               </div>
               {summary.personalBest && (
-                <div className="metric-detail">
-                  <span className="lang-tag">{getLanguageName(summary.personalBest.language)}</span>
-                  <span className="diff-tag">{summary.personalBest.accuracy}% acc</span>
-                  <span className="metric-date">{formatTimestamp(summary.personalBest.createdAt)}</span>
+                <div className="stat-meta">
+                  <span className="badge-tag">{getLanguageName(summary.personalBest.language)}</span>
+                  <span className="stat-meta-text">{summary.personalBest.accuracy}% acc</span>
                 </div>
               )}
             </div>
 
-            {/* Average Speed Card */}
-            <div className="metric-card">
-              <div className="metric-card-top">
-                <span className="metric-icon">&#x26A1;</span>
-                <span className="metric-label">Average Speed</span>
+            {/* Average WPM */}
+            <div className="stat-card">
+              <span className="stat-label">Average Speed</span>
+              <div className="stat-value-group">
+                <span className="stat-number">{summary.averageWpm}</span>
+                <span className="stat-unit">WPM</span>
               </div>
-              <div className="metric-value-row">
-                <span className="metric-value">{summary.averageWpm}</span>
-                <span className="metric-unit">WPM</span>
-              </div>
-              <span className="metric-sub">Across all {summary.totalTests} tests</span>
+              <span className="stat-meta-text">{summary.totalTests} total sessions</span>
             </div>
 
-            {/* Average Accuracy Card */}
-            <div className="metric-card">
-              <div className="metric-card-top">
-                <span className="metric-icon">&#x25CE;</span>
-                <span className="metric-label">Avg Accuracy</span>
+            {/* Average Accuracy */}
+            <div className="stat-card">
+              <span className="stat-label">Average Accuracy</span>
+              <div className="stat-value-group">
+                <span className="stat-number text-green">{summary.averageAccuracy}%</span>
               </div>
-              <div className="metric-value-row">
-                <span className="metric-value text-green">{summary.averageAccuracy}%</span>
-              </div>
-              <span className="metric-sub">Precision score</span>
+              <span className="stat-meta-text">Typing precision</span>
             </div>
 
-            {/* Total Tests Card */}
-            <div className="metric-card">
-              <div className="metric-card-top">
-                <span className="metric-icon">&#x2714;</span>
-                <span className="metric-label">Tests Completed</span>
+            {/* Tests Completed */}
+            <div className="stat-card">
+              <span className="stat-label">Tests Completed</span>
+              <div className="stat-value-group">
+                <span className="stat-number">{summary.totalTests}</span>
               </div>
-              <div className="metric-value-row">
-                <span className="metric-value">{summary.totalTests}</span>
-                <span className="metric-unit">sessions</span>
-              </div>
-              <span className="metric-sub">Recorded {isRanked ? 'ranked' : 'practice'} attempts</span>
+              <span className="stat-meta-text">{isRanked ? 'Verified ranked' : 'Practice sessions'}</span>
             </div>
 
-            {/* Total Time Card */}
-            <div className="metric-card">
-              <div className="metric-card-top">
-                <span className="metric-icon">&#x23F1;</span>
-                <span className="metric-label">Time Typed</span>
+            {/* Total Time Typed */}
+            <div className="stat-card">
+              <span className="stat-label">Time Typed</span>
+              <div className="stat-value-group">
+                <span className="stat-number text-purple">{formatTime(summary.totalTimeTypedSeconds)}</span>
               </div>
-              <div className="metric-value-row">
-                <span className="metric-value text-purple">
-                  {formatTime(summary.totalTimeTypedSeconds)}
-                </span>
-              </div>
-              <span className="metric-sub">Total session time</span>
+              <span className="stat-meta-text">Active typing</span>
             </div>
           </div>
 
-          {/* If in Ranked mode: Show Ranked Badges Grid */}
+          {/* Badges Section (Ranked Mode) */}
           {isRanked && (
             <BadgesGrid badges={badges} loading={badgesLoading} />
           )}
 
-          {/* Section: Language Breakdown & Recent Attempts */}
-          <div className="dashboard-two-col">
-            {/* Language Breakdown */}
-            <div className="dashboard-section-card">
-              <div className="section-card-header">
-                <h3 className="section-title">Language Breakdown</h3>
-                <span className="section-sub">{summary.languageBreakdown.length} languages practiced</span>
+          {/* 2-Column Section: Language Performance & Recent Activity */}
+          <div className="dashboard-columns">
+            {/* Language Breakdown Panel */}
+            <div className="panel">
+              <div className="panel-header">
+                <h3 className="panel-title">Language Breakdown</h3>
+                <span className="panel-badge">{summary.languageBreakdown.length} languages</span>
               </div>
 
-              <div className="lang-breakdown-list">
-                {summary.languageBreakdown.map((item) => (
-                  <div key={item.language} className="lang-breakdown-row">
-                    <div className="lang-breakdown-info">
-                      <span className="lang-tag">{getLanguageName(item.language)}</span>
-                      <span className="lang-count">{item.testCount} {item.testCount === 1 ? 'test' : 'tests'}</span>
-                    </div>
-                    <div className="lang-breakdown-stats">
-                      <div className="lang-stat-chip">
-                        <span className="chip-lbl">Best:</span>
-                        <strong className={`chip-val ${isRanked ? 'text-amber' : 'text-cyan'}`}>{item.bestWpm} WPM</strong>
-                      </div>
-                      <div className="lang-stat-chip">
-                        <span className="chip-lbl">Avg:</span>
-                        <strong className="chip-val">{item.averageWpm} WPM</strong>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="data-table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Language</th>
+                      <th>Tests</th>
+                      <th>Best</th>
+                      <th>Average</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.languageBreakdown.map((item) => (
+                      <tr key={item.language}>
+                        <td>
+                          <span className="badge-tag">{getLanguageName(item.language)}</span>
+                        </td>
+                        <td className="text-muted">{item.testCount}</td>
+                        <td className={isRanked ? 'text-amber' : 'text-cyan'}>
+                          <strong>{item.bestWpm} WPM</strong>
+                        </td>
+                        <td>{item.averageWpm} WPM</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 
-            {/* Recent Attempts Feed */}
-            <div className="dashboard-section-card">
-              <div className="section-card-header">
-                <h3 className="section-title">Recent {isRanked ? 'Ranked' : 'Practice'} Activity</h3>
+            {/* Recent Activity Panel */}
+            <div className="panel">
+              <div className="panel-header">
+                <h3 className="panel-title">Recent Activity</h3>
                 <button
                   type="button"
-                  className="link-action-btn"
+                  className="link-text"
                   onClick={() => onNavigateToHistory(dashboardMode)}
                 >
                   View All &rarr;
                 </button>
               </div>
 
-              <div className="recent-attempts-list">
+              <div className="activity-list">
                 {summary.recentAttempts.map((attempt) => (
-                  <div key={attempt.id} className="recent-attempt-row">
-                    <div className="recent-attempt-left">
-                      <span className="lang-tag">{getLanguageName(attempt.language)}</span>
-                      <span className="recent-timer">{getTimerLabel(attempt.timerSeconds)}</span>
-                      <span className="recent-date">{formatTimestamp(attempt.createdAt)}</span>
+                  <div key={attempt.id} className="activity-row">
+                    <div className="activity-left">
+                      <span className="badge-tag">{getLanguageName(attempt.language)}</span>
+                      <span className="activity-meta">{getTimerLabel(attempt.timerSeconds)}</span>
+                      <span className="activity-date">{formatTimestamp(attempt.createdAt)}</span>
                     </div>
-                    <div className="recent-attempt-right">
-                      <span className={`recent-wpm ${isRanked ? 'text-amber' : 'text-cyan'}`}>
+                    <div className="activity-right">
+                      <span className={`activity-wpm ${isRanked ? 'text-amber' : 'text-cyan'}`}>
                         {attempt.wpm} WPM
                       </span>
-                      <span className="recent-acc text-green">{attempt.accuracy}%</span>
+                      <span className="activity-acc text-green">{attempt.accuracy}%</span>
                     </div>
                   </div>
                 ))}

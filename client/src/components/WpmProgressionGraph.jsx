@@ -38,8 +38,8 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
 
   // Dimensions & padding
   const width = 800;
-  const height = 280;
-  const padding = { top: 25, right: 35, bottom: 42, left: 50 };
+  const height = 260;
+  const padding = { top: 20, right: 30, bottom: 36, left: 46 };
 
   const yBounds = calculateYBounds(graphData);
   const points = computePointCoordinates(graphData, width, height, padding, yBounds);
@@ -66,44 +66,41 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
   const visibleXIndices = getVisibleXIndices();
 
   return (
-    <div className="graph-card">
-      <div className="graph-header">
+    <div className="panel graph-panel">
+      <div className="panel-header">
         <div>
-          <h3 className="graph-title">WPM Progression</h3>
-          <p className="graph-subtitle">Chronological typing speed across sequential attempts.</p>
+          <h3 className="panel-title">WPM Progression</h3>
+          <p className="panel-subtitle">Chronological typing speed across sequential attempts.</p>
         </div>
 
         {truncated && (
-          <span className="graph-truncated-badge" title="Graph capped to most recent 500 attempts for performance">
-            Showing most recent 500 of {totalCount} attempts
+          <span className="badge-warning" title="Graph capped to most recent 500 attempts for performance">
+            Showing latest 500 of {totalCount}
           </span>
         )}
       </div>
 
       {loading ? (
-        <div className="graph-state-container loading">
-          <div className="skeleton-loader">
-            <div className="skeleton-line title"></div>
-            <div className="skeleton-line row"></div>
-          </div>
-          <p>Loading progression graph...</p>
+        <div className="state-panel loading">
+          <div className="loading-spinner"></div>
+          <p>Loading graph...</p>
         </div>
       ) : graphData.length === 0 ? (
-        <div className="graph-state-container empty">
-          <div className="empty-symbol">&gt;_</div>
-          <p>No performance attempts to graph for this filter selection.</p>
+        <div className="state-panel empty graph-empty">
+          <div className="empty-glyph">&gt;_</div>
+          <p>No attempts recorded for the selected filters.</p>
         </div>
       ) : (
-        <div className="graph-canvas-wrapper">
+        <div className="graph-wrapper">
           <svg
             viewBox={`0 0 ${width} ${height}`}
-            className="graph-svg"
+            className="graph-canvas"
             preserveAspectRatio="none"
             onMouseLeave={() => setHoveredPoint(null)}
           >
             <defs>
               <linearGradient id="wpmAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.35" />
+                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.25" />
                 <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
               </linearGradient>
             </defs>
@@ -114,19 +111,19 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
               const yPos = height - padding.bottom - normalizedY * (height - padding.top - padding.bottom);
 
               return (
-                <g key={tickVal} className="grid-group">
+                <g key={tickVal} className="grid-line-group">
                   <line
                     x1={padding.left}
                     y1={yPos}
                     x2={width - padding.right}
                     y2={yPos}
-                    className="grid-line"
+                    className="chart-gridline"
                   />
                   <text
-                    x={padding.left - 10}
+                    x={padding.left - 8}
                     y={yPos + 4}
                     textAnchor="end"
-                    className="axis-tick-label"
+                    className="chart-axis-tick"
                   >
                     {tickVal}
                   </text>
@@ -140,7 +137,7 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
               y1={height - padding.bottom}
               x2={width - padding.right}
               y2={height - padding.bottom}
-              className="axis-baseline"
+              className="chart-baseline"
             />
 
             {/* X-Axis Attempt Number Ticks */}
@@ -152,9 +149,9 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
                 <text
                   key={idx}
                   x={pt.x}
-                  y={height - padding.bottom + 20}
+                  y={height - padding.bottom + 18}
                   textAnchor="middle"
-                  className="axis-tick-label x-label"
+                  className="chart-axis-tick chart-x-tick"
                 >
                   #{pt.attemptNumber}
                 </text>
@@ -163,12 +160,12 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
 
             {/* Area Fill Gradient (2+ points) */}
             {points.length >= 2 && (
-              <path d={areaPath} fill="url(#wpmAreaGradient)" className="graph-area" />
+              <path d={areaPath} fill="url(#wpmAreaGradient)" className="chart-area-fill" />
             )}
 
             {/* Line Path (2+ points) */}
             {points.length >= 2 && (
-              <path d={linePath} fill="none" className="graph-line" />
+              <path d={linePath} fill="none" className="chart-line-stroke" />
             )}
 
             {/* Interactive Data Points */}
@@ -176,31 +173,31 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
               const isHovered = hoveredPoint?.attemptNumber === pt.attemptNumber;
 
               return (
-                <g key={pt.id || pt.attemptNumber} className="point-group">
+                <g key={pt.id || pt.attemptNumber} className="chart-point-group">
                   {/* Invisible larger hover trigger */}
                   <circle
                     cx={pt.x}
                     cy={pt.y}
                     r={12}
                     fill="transparent"
-                    className="hover-trigger"
+                    className="chart-hover-trigger"
                     onMouseEnter={() => setHoveredPoint(pt)}
                   />
-                  {/* Outer pulse when hovered */}
+                  {/* Outer ring when hovered */}
                   {isHovered && (
                     <circle
                       cx={pt.x}
                       cy={pt.y}
-                      r={7}
-                      className="point-pulse"
+                      r={6}
+                      className="chart-point-ring"
                     />
                   )}
                   {/* Main Point Circle */}
                   <circle
                     cx={pt.x}
                     cy={pt.y}
-                    r={points.length === 1 ? 6 : isHovered ? 5 : 3.5}
-                    className={`point-circle ${isHovered ? 'active' : ''}`}
+                    r={points.length === 1 ? 5 : isHovered ? 4.5 : 3}
+                    className={`chart-point-dot ${isHovered ? 'hovered' : ''}`}
                   />
                 </g>
               );
@@ -209,39 +206,39 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
 
           {/* Single-point dataset guidance note */}
           {graphData.length === 1 && (
-            <div className="graph-single-note">
-              <span>&#x2139; 1 attempt recorded. Complete additional tests to view your progression trend line!</span>
+            <div className="graph-hint">
+              <span>1 attempt recorded. Complete more tests to generate your progression trend line.</span>
             </div>
           )}
 
           {/* Interactive Floating Tooltip */}
           {hoveredPoint && (
             <div
-              className="graph-tooltip"
+              className="chart-tooltip"
               style={{
                 left: `${(hoveredPoint.x / width) * 100}%`,
                 top: `${(hoveredPoint.y / height) * 100}%`,
               }}
             >
-              <div className="tooltip-header">
-                <span className="tooltip-attempt">Attempt #{hoveredPoint.attemptNumber}</span>
-                <span className="tooltip-date">{formatTimestamp(hoveredPoint.createdAt)}</span>
+              <div className="tooltip-top">
+                <span className="tooltip-title">Attempt #{hoveredPoint.attemptNumber}</span>
+                <span className="tooltip-time">{formatTimestamp(hoveredPoint.createdAt)}</span>
               </div>
-              <div className="tooltip-body">
-                <div className="tooltip-row">
-                  <span className="tooltip-label">Speed:</span>
-                  <strong className="tooltip-val text-cyan">{hoveredPoint.wpm} WPM</strong>
+              <div className="tooltip-stats">
+                <div className="tooltip-stat">
+                  <span className="tooltip-lbl">WPM:</span>
+                  <strong className="tooltip-val text-cyan">{hoveredPoint.wpm}</strong>
                 </div>
-                <div className="tooltip-row">
-                  <span className="tooltip-label">Accuracy:</span>
+                <div className="tooltip-stat">
+                  <span className="tooltip-lbl">Accuracy:</span>
                   <strong className="tooltip-val text-green">{hoveredPoint.accuracy}%</strong>
                 </div>
-                <div className="tooltip-row">
-                  <span className="tooltip-label">Language:</span>
+                <div className="tooltip-stat">
+                  <span className="tooltip-lbl">Snippet:</span>
                   <span className="tooltip-val">{getLanguageName(hoveredPoint.language)} ({hoveredPoint.difficulty})</span>
                 </div>
-                <div className="tooltip-row">
-                  <span className="tooltip-label">Duration:</span>
+                <div className="tooltip-stat">
+                  <span className="tooltip-lbl">Timer:</span>
                   <span className="tooltip-val">{getTimerLabel(hoveredPoint.timerSeconds)}</span>
                 </div>
               </div>

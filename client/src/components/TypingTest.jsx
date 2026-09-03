@@ -143,43 +143,44 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
   };
 
   return (
-    <div className="typing-test-container">
+    <div className="typing-container">
       {/* Top Test Navigation Bar */}
-      <div className="test-nav-bar">
-        <div className="meta-left">
-          <span className="lang-tag">{languageName}</span>
+      <div className="test-toolbar">
+        <div className="test-meta-tags">
+          <span className="badge-tag">{languageName}</span>
           <span className={`diff-tag ${snippet.difficulty?.toLowerCase()}`}>
             {snippet.difficulty ? snippet.difficulty.charAt(0).toUpperCase() + snippet.difficulty.slice(1) : ''}
           </span>
-          <span className="snippet-tag">{snippet.title}</span>
+          <span className="snippet-name-tag">{snippet.title}</span>
         </div>
-        <div className={`countdown-timer ${timeLeft <= 10 ? 'urgent' : ''}`}>
-          <span className="timer-icon">&#x23F1;</span>
-          <span className="timer-digits">{formatTime(timeLeft)}</span>
+
+        <div className={`countdown-clock ${timeLeft <= 10 ? 'urgent' : ''}`}>
+          <span className="clock-digits">{formatTime(timeLeft)}</span>
         </div>
-        <div className="meta-right">
-          <button type="button" className="nav-btn" onClick={onRestart} title="Restart test">
+
+        <div className="test-actions">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onRestart} title="Restart test">
             &#x21BB; Restart
           </button>
-          <button type="button" className="nav-btn secondary" onClick={onCancel} title="Exit test">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel} title="Change settings">
             Settings
           </button>
         </div>
       </div>
 
       {/* Target Code Display Area */}
-      <div className="code-display-panel" onClick={handleCodeAreaClick} ref={codeDisplayRef}>
-        <div className="code-header">
-          <span className="window-dots">
-            <span className="dot red"></span>
-            <span className="dot yellow"></span>
-            <span className="dot green"></span>
-          </span>
-          <span className="code-instruction">
-            {!hasStarted ? 'Start typing to begin timer...' : 'Keep typing target code...'}
+      <div className="editor-panel" onClick={handleCodeAreaClick} ref={codeDisplayRef}>
+        <div className="editor-header">
+          <div className="editor-dots">
+            <span className="dot dot-red"></span>
+            <span className="dot dot-yellow"></span>
+            <span className="dot dot-green"></span>
+          </div>
+          <span className="editor-status">
+            {!hasStarted ? 'Start typing to begin...' : 'Keep typing...'}
           </span>
         </div>
-        <pre className="code-content">
+        <pre className="editor-code">
           <code>
             {comparison.charStatuses.map((item, index) => {
               let displayChar = item.char;
@@ -188,7 +189,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
               return (
                 <span
                   key={index}
-                  className={`code-char ${item.status} ${isNewline ? 'newline-char' : ''}`}
+                  className={`char-node ${item.status} ${isNewline ? 'newline' : ''}`}
                 >
                   {isNewline ? (item.status === 'current' || item.status === 'incorrect' ? '↵\n' : '\n') : displayChar}
                 </span>
@@ -198,49 +199,46 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
         </pre>
       </div>
 
-      {/* Input Typing Area */}
-      <div className="typing-input-panel">
-        <label htmlFor="code-typing-textarea" className="input-label">
-          Typing Area (Tab key inserts indentation)
-        </label>
+      {/* Hidden Textarea for Input Capture */}
+      <div className="typing-input-area">
         <textarea
           id="code-typing-textarea"
           ref={textareaRef}
-          className="code-textarea"
+          className="editor-textarea"
           value={typedCode}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          placeholder="Click here and start typing the code above..."
+          placeholder="Click here and start typing the code snippet..."
           disabled={timeLeft === 0}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck="false"
-          rows={6}
+          rows={3}
         />
       </div>
 
       {/* Live Metrics Gauge */}
-      <div className="live-metrics-bar">
-        <div className="metric-box">
-          <span className="metric-number">{liveWpm}</span>
-          <span className="metric-title">WPM</span>
+      <div className="live-metrics-row">
+        <div className="live-metric">
+          <span className="live-val">{liveWpm}</span>
+          <span className="live-lbl">WPM</span>
         </div>
-        <div className="metric-box">
-          <span className="metric-number">{liveAccuracy}%</span>
-          <span className="metric-title">Accuracy</span>
+        <div className="live-metric">
+          <span className="live-val">{liveAccuracy}%</span>
+          <span className="live-lbl">Accuracy</span>
         </div>
-        <div className="metric-box">
-          <span className="metric-number">{comparison.correctCount}</span>
-          <span className="metric-title">Correct</span>
+        <div className="live-metric">
+          <span className="live-val text-green">{comparison.correctCount}</span>
+          <span className="live-lbl">Correct</span>
         </div>
-        <div className="metric-box">
-          <span className="metric-number">{comparison.incorrectCount}</span>
-          <span className="metric-title">Errors</span>
+        <div className="live-metric">
+          <span className="live-val text-red">{comparison.incorrectCount}</span>
+          <span className="live-lbl">Errors</span>
         </div>
-        <div className="metric-box">
-          <span className="metric-number">{comparison.totalTyped} / {targetCode.length}</span>
-          <span className="metric-title">Progress</span>
+        <div className="live-metric">
+          <span className="live-val">{comparison.totalTyped} / {targetCode.length}</span>
+          <span className="live-lbl">Progress</span>
         </div>
       </div>
     </div>

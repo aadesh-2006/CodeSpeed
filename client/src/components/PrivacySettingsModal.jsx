@@ -21,22 +21,22 @@ export function PrivacySettingsModal({ isOpen, onClose, currentVisibility = 'pri
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-container" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3 className="modal-title">Practice Stats Privacy</h3>
-          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close">
+          <h3 className="modal-title">Practice Privacy Settings</h3>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close dialog">
             &times;
           </button>
         </div>
 
         <div className="modal-body">
-          <p className="modal-desc">
-            Choose whether your <strong>Unranked Practice</strong> statistics and progression graphs are publicly visible on your shareable profile.
+          <p className="modal-description">
+            Control whether your <strong>Unranked Practice</strong> history and progression graph appear on your public profile.
           </p>
 
-          <div className="privacy-options-group">
-            <label className={`privacy-option-card ${selectedVisibility === 'private' ? 'active' : ''}`}>
+          <div className="radio-cards-group">
+            <label className={`radio-card ${selectedVisibility === 'private' ? 'selected' : ''}`}>
               <input
                 type="radio"
                 name="practicePrivacy"
@@ -44,17 +44,21 @@ export function PrivacySettingsModal({ isOpen, onClose, currentVisibility = 'pri
                 checked={selectedVisibility === 'private'}
                 onChange={() => setSelectedVisibility('private')}
               />
-              <div className="privacy-option-text">
-                <div className="privacy-option-header">
-                  <strong>🔒 Private (Default)</strong>
+              <div className="radio-card-content">
+                <div className="radio-card-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                  </svg>
+                  <span>Private (Default)</span>
                 </div>
-                <p>
-                  Only you can see your practice statistics and graph. Your public profile will only show your ranked achievements.
+                <p className="radio-card-desc">
+                  Only you can see your practice statistics and progression. Your public profile displays only verified ranked achievements.
                 </p>
               </div>
             </label>
 
-            <label className={`privacy-option-card ${selectedVisibility === 'public' ? 'active' : ''}`}>
+            <label className={`radio-card ${selectedVisibility === 'public' ? 'selected' : ''}`}>
               <input
                 type="radio"
                 name="practicePrivacy"
@@ -62,30 +66,35 @@ export function PrivacySettingsModal({ isOpen, onClose, currentVisibility = 'pri
                 checked={selectedVisibility === 'public'}
                 onChange={() => setSelectedVisibility('public')}
               />
-              <div className="privacy-option-text">
-                <div className="privacy-option-header">
-                  <strong>🌐 Public</strong>
+              <div className="radio-card-content">
+                <div className="radio-card-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                  </svg>
+                  <span>Public</span>
                 </div>
-                <p>
-                  Anyone viewing your profile can see your practice statistics and practice progression graph.
+                <p className="radio-card-desc">
+                  Anyone visiting your public profile URL can see your practice statistics and practice WPM progression graph.
                 </p>
               </div>
             </label>
           </div>
 
-          <div className="privacy-note">
-            <em>Note: Ranked statistics and badges are competitive milestones and are always public.</em>
+          <div className="modal-note">
+            <em>Ranked statistics and badges are competitive milestones and are always public.</em>
           </div>
 
-          {error && <p className="modal-error-text">{error}</p>}
+          {error && <p className="error-text">{error}</p>}
         </div>
 
         <div className="modal-footer">
-          <button type="button" className="action-btn secondary-btn compact" onClick={onClose} disabled={saving}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={saving}>
             Cancel
           </button>
-          <button type="button" className="action-btn primary-btn compact" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Save Settings'}
+          <button type="button" className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Preferences'}
           </button>
         </div>
       </div>

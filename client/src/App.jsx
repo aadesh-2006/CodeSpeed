@@ -15,7 +15,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Top-level authenticated view: 'dashboard' | 'test' | 'history'
+  // Top-level view: 'dashboard' | 'test' | 'history'
   const [currentView, setCurrentView] = useState('dashboard');
   const [historyInitialMode, setHistoryInitialMode] = useState('practice');
 
@@ -64,7 +64,7 @@ function App() {
       })
       .then((data) => {
         if (data.status === 'ok') {
-          setApiStatus({ status: 'connected', message: 'Connected to API' });
+          setApiStatus({ status: 'connected', message: 'API connected' });
         } else {
           setApiStatus({ status: 'disconnected', message: 'API responded with non-ok status' });
         }
@@ -193,16 +193,86 @@ function App() {
   const activeLanguageName = activeLanguageObj ? activeLanguageObj.name : selectedLanguage;
 
   return (
-    <div className="app-container">
-      <header className="header">
-        <div className="badge">CodeSpeed &bull; Ranked &amp; Badges (M9 Release)</div>
+    <div className="app-shell">
+      {/* Top Application Navigation */}
+      <header className="navbar">
+        <div className="navbar-container">
+          <div className="navbar-brand" onClick={() => { setCurrentView('dashboard'); setPublicProfileUsername(null); }}>
+            <span className="brand-symbol">&gt;_</span>
+            <span className="brand-name">CodeSpeed</span>
+          </div>
+
+          {user && !publicProfileUsername && (
+            <nav className="navbar-nav">
+              <button
+                type="button"
+                className={`nav-link ${currentView === 'dashboard' ? 'active' : ''}`}
+                onClick={() => setCurrentView('dashboard')}
+              >
+                Dashboard
+              </button>
+              <button
+                type="button"
+                className={`nav-link ${currentView === 'test' && selectedMode === 'practice' ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedMode('practice');
+                  setTestState('IDLE');
+                  setCurrentView('test');
+                }}
+              >
+                Practice
+              </button>
+              <button
+                type="button"
+                className={`nav-link ${currentView === 'test' && selectedMode === 'ranked' ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedMode('ranked');
+                  setTestState('IDLE');
+                  setCurrentView('test');
+                }}
+              >
+                Ranked
+              </button>
+              <button
+                type="button"
+                className={`nav-link ${currentView === 'history' ? 'active' : ''}`}
+                onClick={() => setCurrentView('history')}
+              >
+                History
+              </button>
+            </nav>
+          )}
+
+          <div className="navbar-right">
+            {user ? (
+              <div className="user-profile-menu">
+                <button
+                  type="button"
+                  className="user-nav-btn"
+                  onClick={() => {
+                    window.location.hash = `/user/${user.username}`;
+                  }}
+                  title="View your public profile"
+                >
+                  <span className="user-nav-avatar">{(user.username || 'U')[0].toUpperCase()}</span>
+                  <span className="user-nav-name">{user.username}</span>
+                </button>
+                <button
+                  type="button"
+                  className="logout-text-btn"
+                  onClick={handleLogout}
+                  title="Log out"
+                >
+                  Log out
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </header>
 
-      <main className="hero">
-        <div className="logo-symbol">&gt;_</div>
-        <h1 className="title">CodeSpeed</h1>
-        <p className="tagline">Type code. Track speed. Improve.</p>
-
+      {/* Main Content Area */}
+      <main className="main-content">
         {/* Shareable Public Profile Screen (Active when URL hash has #/user/:username) */}
         {publicProfileUsername ? (
           <PublicProfile
@@ -210,60 +280,24 @@ function App() {
             onNavigateHome={handleClosePublicProfile}
           />
         ) : authLoading ? (
-          <div className="loading-card">
-            <p>Loading user session...</p>
+          <div className="loading-container">
+            <div className="loading-spinner"></div>
+            <p>Loading session...</p>
           </div>
         ) : user ? (
-          /* Authenticated Area */
-          <div className="authenticated-wrapper">
-            <div className="user-bar">
-              <div className="user-greeting">
-                <span>Logged in as </span>
-                <strong className="username-tag">{user.username}</strong>
-                <span className="user-email-tag">({user.email})</span>
-              </div>
-
-              <div className="user-bar-actions">
-                <div className="view-toggle-group">
-                  <button
-                    type="button"
-                    className={`view-toggle-btn ${currentView === 'dashboard' ? 'active' : ''}`}
-                    onClick={() => setCurrentView('dashboard')}
-                  >
-                    Dashboard
-                  </button>
-                  <button
-                    type="button"
-                    className={`view-toggle-btn ${currentView === 'test' ? 'active' : ''}`}
-                    onClick={() => setCurrentView('test')}
-                  >
-                    Practice / Ranked
-                  </button>
-                  <button
-                    type="button"
-                    className={`view-toggle-btn ${currentView === 'history' ? 'active' : ''}`}
-                    onClick={() => setCurrentView('history')}
-                  >
-                    History
-                  </button>
-                </div>
-
-                <button type="button" className="logout-compact-btn" onClick={handleLogout}>
-                  Log Out
-                </button>
-              </div>
-            </div>
-
+          <div className="content-view">
             {/* View: User Dashboard */}
             {currentView === 'dashboard' && (
               <Dashboard
                 user={user}
                 onNavigateToPractice={() => {
                   setSelectedMode('practice');
+                  setTestState('IDLE');
                   setCurrentView('test');
                 }}
                 onNavigateToRanked={() => {
                   setSelectedMode('ranked');
+                  setTestState('IDLE');
                   setCurrentView('test');
                 }}
                 onNavigateToHistory={(mode) => {
@@ -281,13 +315,17 @@ function App() {
             {currentView === 'history' && (
               <PerformanceHistory
                 initialMode={historyInitialMode}
-                onNavigateToPractice={() => setCurrentView('test')}
+                onNavigateToPractice={() => {
+                  setSelectedMode('practice');
+                  setTestState('IDLE');
+                  setCurrentView('test');
+                }}
               />
             )}
 
             {/* View: Typing Practice & Test */}
             {currentView === 'test' && (
-              <>
+              <div className="test-view-container">
                 {testState === 'IDLE' && (
                   <TestSetup
                     selectedMode={selectedMode}
@@ -324,29 +362,28 @@ function App() {
                     onViewHistory={() => setCurrentView('history')}
                   />
                 )}
-              </>
+              </div>
             )}
           </div>
         ) : (
-          /* Unauthenticated Auth UI */
-          <AuthForm onAuthSuccess={handleAuthSuccess} />
-        )}
-
-        <div className="info-card">
-          <div className="status-indicator">
-            <span className={`status-dot ${apiStatus.status}`}></span>
-            <span className="status-text">
-              Backend Status: <strong>{apiStatus.message}</strong>
-            </span>
+          /* Unauthenticated Landing / Auth UI */
+          <div className="unauth-landing">
+            <div className="hero-branding">
+              <div className="brand-logo-icon">&gt;_</div>
+              <h1 className="hero-title">CodeSpeed</h1>
+              <p className="hero-tagline">Type code. Track speed. Improve.</p>
+            </div>
+            <AuthForm onAuthSuccess={handleAuthSuccess} />
           </div>
-          <p className="milestone-note">
-            Milestone 9 Active. Casual practice and competitive ranked typing with verified anti-tamper metrics, 14 milestone badges, privacy controls, and public profiles.
-          </p>
-        </div>
+        )}
       </main>
 
+      {/* Clean Minimalist Footer */}
       <footer className="footer">
-        <p>&copy; {new Date().getFullYear()} CodeSpeed &bull; Built with React &amp; Express</p>
+        <div className="footer-container">
+          <span className="footer-copy">CodeSpeed &bull; Developer Typing Platform</span>
+          <span className="footer-sub">&copy; {new Date().getFullYear()}</span>
+        </div>
       </footer>
     </div>
   );
