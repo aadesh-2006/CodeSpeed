@@ -253,6 +253,26 @@ export function Settings({ user, onUserUpdated, onNavigateBack }) {
               </span>
             </div>
 
+            {/* Email Address (Read-Only) */}
+            <div className="form-group">
+              <label htmlFor="settings-email" className="form-label">
+                Email Address
+              </label>
+              <input
+                id="settings-email"
+                type="email"
+                className="input-field input-field-readonly"
+                value={user?.email || ''}
+                readOnly
+                disabled
+                aria-readonly="true"
+                placeholder="your-email@example.com"
+              />
+              <span className="form-hint">
+                Associated with your CodeSpeed account. Email cannot be changed.
+              </span>
+            </div>
+
             {/* Bio */}
             <div className="form-group">
               <div className="label-with-counter">

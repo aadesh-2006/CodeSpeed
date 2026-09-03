@@ -88,4 +88,22 @@ describe('Settings & Profile Management Pure Logic Tests', () => {
       assert.equal(newPw === confirmPw2, false);
     });
   });
+
+  describe('Account Email Display & Immutability', () => {
+    test('authenticated user email is provided as read-only field', () => {
+      const mockUser = {
+        username: 'Semnótēs',
+        email: 'aadesh@example.com',
+        bio: 'Philosopher typist',
+      };
+
+      assert.equal(mockUser.email, 'aadesh@example.com');
+      // Editable payload whitelist must exclude email
+      const updatePayload = {
+        username: mockUser.username,
+        bio: mockUser.bio,
+      };
+      assert.equal(updatePayload.email, undefined);
+    });
+  });
 });

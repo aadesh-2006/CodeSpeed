@@ -2453,6 +2453,20 @@ body {
   line-height: 1.4;
 }
 
+.input-field-readonly {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  border-color: var(--border-subtle);
+  user-select: text;
+}
+
+.input-field-readonly:focus {
+  border-color: var(--border-subtle);
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .settings-form-actions {
   display: flex;
   justify-content: flex-start;

@@ -598,6 +598,33 @@ describe('Authentication & User Profile API Tests', () => {
       assert.equal(data.data.user.practiceStatsVisibility, 'public');
     });
 
+    test('email cannot be changed through PATCH /api/auth/profile and remains immutable', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${testUserToken}`,
+        },
+        body: JSON.stringify({
+          email: 'hacked_email@example.com',
+          bio: 'Bio updated, email must remain untouched.',
+        }),
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.data.user.email, 'settings@example.com'); // Remains original email
+      assert.equal(data.data.user.bio, 'Bio updated, email must remain untouched.');
+
+      // Verify with GET /api/auth/me
+      const meRes = await fetch(`${baseUrl}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${testUserToken}` },
+      });
+      assert.equal(meRes.status, 200);
+      const meData = await meRes.json();
+      assert.equal(meData.user.email, 'settings@example.com');
+    });
+
     test('rejects bio longer than 200 characters with 400', async () => {
       const longBio = 'A'.repeat(201);
       const res = await fetch(`${baseUrl}/api/auth/profile`, {
