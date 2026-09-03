@@ -6,6 +6,7 @@ import { formatTime } from '../utils/typingMetrics';
 
 export function PublicProfile({ username, onNavigateHome }) {
   const [profile, setProfile] = useState(null);
+  const [profileMode, setProfileMode] = useState('ranked'); // 'ranked' | 'practice' (defaults to ranked)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -43,8 +44,10 @@ export function PublicProfile({ username, onNavigateHome }) {
     }
   };
 
+  const isRanked = profileMode === 'ranked';
+
   return (
-    <div className="profile-view">
+    <div className={`profile-view ${isRanked ? 'ranked-theme' : 'practice-theme'}`}>
       {/* Top Bar Navigation */}
       <div className="view-header">
         <button type="button" className="btn btn-secondary btn-sm" onClick={onNavigateHome}>
@@ -93,139 +96,195 @@ export function PublicProfile({ username, onNavigateHome }) {
             </div>
           </div>
 
-          {/* Section 1: Ranked Progression & Badges (Always Public) */}
-          <div className="profile-section ranked-theme">
-            <div className="section-title-bar">
+          {/* Mode-Specific Performance Section */}
+          <div className={`profile-section ${isRanked ? 'ranked-theme' : 'practice-theme'}`}>
+            <div className="section-title-bar profile-mode-header">
               <div>
-                <h2 className="section-heading">Ranked Performance</h2>
-                <p className="section-subheading">Verified competitive statistics and milestone achievements.</p>
+                <h2 className="section-heading">
+                  {isRanked ? 'Ranked Performance' : 'Practice Performance'}
+                </h2>
+                <p className="section-subheading">
+                  {isRanked
+                    ? 'Verified competitive statistics and milestone achievements.'
+                    : 'Casual practice statistics and typing progression.'}
+                </p>
+              </div>
+
+              {/* Mode Toggle: [ Ranked ] [ Practice ] */}
+              <div className="segmented-control" role="group" aria-label="Profile Mode">
+                <button
+                  type="button"
+                  className={`segment-btn ${isRanked ? 'active ranked' : ''}`}
+                  onClick={() => setProfileMode('ranked')}
+                >
+                  Ranked
+                </button>
+                <button
+                  type="button"
+                  className={`segment-btn ${!isRanked ? 'active' : ''}`}
+                  onClick={() => setProfileMode('practice')}
+                >
+                  Practice
+                </button>
               </div>
             </div>
 
-            {/* Ranked Metrics Grid */}
-            <div className="stats-row">
-              <div className="stat-card stat-ranked">
-                <span className="stat-label">Ranked Best</span>
-                <div className="stat-value-group">
-                  <span className="stat-number text-amber">{profile.ranked?.summary?.personalBest?.wpm || 0}</span>
-                  <span className="stat-unit">WPM</span>
+            {/* RANKED MODE VIEW */}
+            {isRanked && (
+              <>
+                {/* Ranked Metrics Grid */}
+                <div className="stats-row">
+                  <div className="stat-card stat-ranked">
+                    <span className="stat-label">Ranked Best</span>
+                    <div className="stat-value-group">
+                      <span className="stat-number text-amber">{profile.ranked?.summary?.personalBest?.wpm || 0}</span>
+                      <span className="stat-unit">WPM</span>
+                    </div>
+                    {profile.ranked?.summary?.personalBest && (
+                      <div className="stat-meta">
+                        <span className="badge-tag">{profile.ranked.summary.personalBest.language}</span>
+                        <span className="stat-meta-text">{profile.ranked.summary.personalBest.accuracy}% acc</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="stat-card">
+                    <span className="stat-label">Ranked Avg WPM</span>
+                    <div className="stat-value-group">
+                      <span className="stat-number">{profile.ranked?.summary?.averageWpm || 0}</span>
+                      <span className="stat-unit">WPM</span>
+                    </div>
+                    <span className="stat-meta-text">{profile.ranked?.summary?.totalTests || 0} ranked tests</span>
+                  </div>
+
+                  <div className="stat-card">
+                    <span className="stat-label">Avg Accuracy</span>
+                    <div className="stat-value-group">
+                      <span className="stat-number text-green">{profile.ranked?.summary?.averageAccuracy || 0}%</span>
+                    </div>
+                    <span className="stat-meta-text">Ranked precision</span>
+                  </div>
+
+                  <div className="stat-card">
+                    <span className="stat-label">Ranked Tests</span>
+                    <div className="stat-value-group">
+                      <span className="stat-number">{profile.ranked?.summary?.totalTests || 0}</span>
+                    </div>
+                    <span className="stat-meta-text">Verified attempts</span>
+                  </div>
+
+                  <div className="stat-card">
+                    <span className="stat-label">Ranked Time</span>
+                    <div className="stat-value-group">
+                      <span className="stat-number text-purple">
+                        {formatTime(profile.ranked?.summary?.totalTimeTypedSeconds || 0)}
+                      </span>
+                    </div>
+                    <span className="stat-meta-text">Total competitive time</span>
+                  </div>
                 </div>
-                {profile.ranked?.summary?.personalBest && (
-                  <div className="stat-meta">
-                    <span className="badge-tag">{profile.ranked.summary.personalBest.language}</span>
-                    <span className="stat-meta-text">{profile.ranked.summary.personalBest.accuracy}% acc</span>
+
+                {/* Ranked Badges Grid (Ranked only) */}
+                <BadgesGrid badges={profile.ranked?.badges || []} />
+
+                {/* Ranked WPM Progression Graph */}
+                {profile.ranked?.graphData && profile.ranked.graphData.length > 0 && (
+                  <div className="panel profile-graph-panel">
+                    <div className="panel-header">
+                      <h3 className="panel-title">Ranked Progression</h3>
+                    </div>
+                    <WpmProgressionGraph
+                      graphData={profile.ranked.graphData}
+                      totalCount={profile.ranked.graphData.length}
+                    />
                   </div>
                 )}
-              </div>
+              </>
+            )}
 
-              <div className="stat-card">
-                <span className="stat-label">Ranked Avg WPM</span>
-                <div className="stat-value-group">
-                  <span className="stat-number">{profile.ranked?.summary?.averageWpm || 0}</span>
-                  <span className="stat-unit">WPM</span>
-                </div>
-                <span className="stat-meta-text">{profile.ranked?.summary?.totalTests || 0} ranked tests</span>
-              </div>
+            {/* PRACTICE MODE VIEW */}
+            {!isRanked && (
+              <>
+                {profile.practice ? (
+                  <>
+                    {/* Practice Metrics Grid */}
+                    <div className="stats-row">
+                      <div className="stat-card">
+                        <span className="stat-label">Practice Best</span>
+                        <div className="stat-value-group">
+                          <span className="stat-number text-blue">{profile.practice.summary?.personalBest?.wpm || 0}</span>
+                          <span className="stat-unit">WPM</span>
+                        </div>
+                        {profile.practice.summary?.personalBest && (
+                          <div className="stat-meta">
+                            <span className="badge-tag">{profile.practice.summary.personalBest.language}</span>
+                            <span className="stat-meta-text">{profile.practice.summary.personalBest.accuracy}% acc</span>
+                          </div>
+                        )}
+                      </div>
 
-              <div className="stat-card">
-                <span className="stat-label">Avg Accuracy</span>
-                <div className="stat-value-group">
-                  <span className="stat-number text-green">{profile.ranked?.summary?.averageAccuracy || 0}%</span>
-                </div>
-                <span className="stat-meta-text">Ranked precision</span>
-              </div>
+                      <div className="stat-card">
+                        <span className="stat-label">Practice Avg WPM</span>
+                        <div className="stat-value-group">
+                          <span className="stat-number">{profile.practice.summary?.averageWpm || 0}</span>
+                          <span className="stat-unit">WPM</span>
+                        </div>
+                        <span className="stat-meta-text">{profile.practice.summary?.totalTests || 0} practice tests</span>
+                      </div>
 
-              <div className="stat-card">
-                <span className="stat-label">Ranked Tests</span>
-                <div className="stat-value-group">
-                  <span className="stat-number">{profile.ranked?.summary?.totalTests || 0}</span>
-                </div>
-                <span className="stat-meta-text">Verified attempts</span>
-              </div>
+                      <div className="stat-card">
+                        <span className="stat-label">Practice Accuracy</span>
+                        <div className="stat-value-group">
+                          <span className="stat-number text-green">{profile.practice.summary?.averageAccuracy || 0}%</span>
+                        </div>
+                        <span className="stat-meta-text">Practice precision</span>
+                      </div>
 
-              <div className="stat-card">
-                <span className="stat-label">Ranked Time</span>
-                <div className="stat-value-group">
-                  <span className="stat-number text-purple">
-                    {formatTime(profile.ranked?.summary?.totalTimeTypedSeconds || 0)}
-                  </span>
-                </div>
-                <span className="stat-meta-text">Total competitive time</span>
-              </div>
-            </div>
+                      <div className="stat-card">
+                        <span className="stat-label">Practice Tests</span>
+                        <div className="stat-value-group">
+                          <span className="stat-number">{profile.practice.summary?.totalTests || 0}</span>
+                        </div>
+                        <span className="stat-meta-text">Completed sessions</span>
+                      </div>
 
-            {/* Ranked Badges Grid */}
-            <BadgesGrid badges={profile.ranked?.badges || []} />
+                      <div className="stat-card">
+                        <span className="stat-label">Practice Time</span>
+                        <div className="stat-value-group">
+                          <span className="stat-number text-purple">
+                            {formatTime(profile.practice.summary?.totalTimeTypedSeconds || 0)}
+                          </span>
+                        </div>
+                        <span className="stat-meta-text">Total practice time</span>
+                      </div>
+                    </div>
 
-            {/* Ranked WPM Progression Graph */}
-            {profile.ranked?.graphData && profile.ranked.graphData.length > 0 && (
-              <div className="panel profile-graph-panel">
-                <div className="panel-header">
-                  <h3 className="panel-title">Ranked Progression</h3>
-                </div>
-                <WpmProgressionGraph
-                  graphData={profile.ranked.graphData}
-                  totalCount={profile.ranked.graphData.length}
-                />
-              </div>
+                    {/* Practice Progression Graph */}
+                    {profile.practice.graphData && profile.practice.graphData.length > 0 && (
+                      <div className="panel profile-graph-panel">
+                        <div className="panel-header">
+                          <h3 className="panel-title">Practice Progression</h3>
+                        </div>
+                        <WpmProgressionGraph
+                          graphData={profile.practice.graphData}
+                          totalCount={profile.practice.graphData.length}
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Practice Private State */
+                  <div className="panel private-stats-panel">
+                    <div className="private-stats-lock">&#x1F512;</div>
+                    <h3 className="private-stats-title">Practice statistics are private.</h3>
+                    <p className="private-stats-subtitle">
+                      This user has chosen to keep their practice attempts private.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </div>
-
-          {/* Section 2: Practice Statistics (Conditional on practice privacy) */}
-          {profile.practice && (
-            <div className="profile-section practice-theme">
-              <div className="section-title-bar">
-                <div>
-                  <h2 className="section-heading">Unranked Practice</h2>
-                  <p className="section-subheading">Casual practice performance and typing progression.</p>
-                </div>
-              </div>
-
-              <div className="stats-row">
-                <div className="stat-card">
-                  <span className="stat-label">Practice Best</span>
-                  <div className="stat-value-group">
-                    <span className="stat-number text-cyan">{profile.practice.summary?.personalBest?.wpm || 0}</span>
-                    <span className="stat-unit">WPM</span>
-                  </div>
-                </div>
-
-                <div className="stat-card">
-                  <span className="stat-label">Practice Avg WPM</span>
-                  <div className="stat-value-group">
-                    <span className="stat-number">{profile.practice.summary?.averageWpm || 0}</span>
-                    <span className="stat-unit">WPM</span>
-                  </div>
-                </div>
-
-                <div className="stat-card">
-                  <span className="stat-label">Practice Accuracy</span>
-                  <div className="stat-value-group">
-                    <span className="stat-number text-green">{profile.practice.summary?.averageAccuracy || 0}%</span>
-                  </div>
-                </div>
-
-                <div className="stat-card">
-                  <span className="stat-label">Practice Tests</span>
-                  <div className="stat-value-group">
-                    <span className="stat-number">{profile.practice.summary?.totalTests || 0}</span>
-                  </div>
-                </div>
-              </div>
-
-              {profile.practice.graphData && profile.practice.graphData.length > 0 && (
-                <div className="panel profile-graph-panel">
-                  <div className="panel-header">
-                    <h3 className="panel-title">Practice Progression</h3>
-                  </div>
-                  <WpmProgressionGraph
-                    graphData={profile.practice.graphData}
-                    totalCount={profile.practice.graphData.length}
-                  />
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
     </div>

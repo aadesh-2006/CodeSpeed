@@ -1833,6 +1833,14 @@ body {
   padding-bottom: 0.5rem;
 }
 
+.profile-mode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .section-heading {
   font-size: 1.05rem;
   font-weight: 800;
@@ -1845,6 +1853,37 @@ body {
 
 .profile-graph-panel {
   margin-top: 0.5rem;
+}
+
+.private-stats-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem 1.5rem;
+  background: var(--bg-panel);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  gap: 0.5rem;
+}
+
+.private-stats-lock {
+  font-size: 1.75rem;
+  opacity: 0.7;
+  margin-bottom: 0.25rem;
+}
+
+.private-stats-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.private-stats-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  max-width: 360px;
 }
 
 /* ========================================================
