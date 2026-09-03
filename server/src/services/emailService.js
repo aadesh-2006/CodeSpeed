@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 
-// In-memory mailbox used during testing and development fallbacks
+// In-memory mailbox used during testing and development simulation
 export const testMailbox = [];
 
 /**
@@ -116,41 +116,61 @@ The CodeSpeed Team`;
 </html>
 `;
 
-  // Always record sent mail in testMailbox for unit test assertions
-  testMailbox.push({
-    to: toEmail,
-    username,
-    rawToken,
-    verificationUrl,
-    sentAt: new Date(),
-  });
-
+  const isProduction = process.env.NODE_ENV === 'production';
   const transporter = createTransporter();
-  if (transporter) {
-    try {
-      await transporter.sendMail({
-        from: fromEmail,
-        to: toEmail,
-        subject,
-        text: textBody,
-        html: htmlBody,
-      });
-    } catch (err) {
-      console.error('[EmailService] Failed to deliver SMTP email:', err.message);
-      // In production, log error but do not expose raw transport details
+
+  if (!transporter) {
+    if (isProduction) {
+      console.error('[EmailService] SMTP configuration missing in production environment.');
+      const err = new Error('Email service is currently unavailable.');
+      err.code = 'SMTP_NOT_CONFIGURED';
+      throw err;
     }
-  } else {
-    // Non-production or unconfigured SMTP: log for developers
-    if (process.env.NODE_ENV !== 'test') {
-      console.log(`[EmailService Development Mode] Verification link for ${toEmail}: ${verificationUrl}`);
-    }
+
+    // Local development or automated test fallback simulation
+    testMailbox.push({
+      to: toEmail,
+      username,
+      rawToken,
+      verificationUrl,
+      sentAt: new Date(),
+    });
+
+    return { success: true, simulated: true };
   }
 
-  return { success: true, verificationUrl };
+  // Execute SMTP delivery through configured transporter
+  try {
+    const info = await transporter.sendMail({
+      from: fromEmail,
+      to: toEmail,
+      subject,
+      text: textBody,
+      html: htmlBody,
+    });
+
+    if (process.env.NODE_ENV === 'test') {
+      testMailbox.push({
+        to: toEmail,
+        username,
+        rawToken,
+        verificationUrl,
+        sentAt: new Date(),
+      });
+    }
+
+    return { success: true, messageId: info?.messageId };
+  } catch (err) {
+    console.error('[EmailService] SMTP delivery rejected:', err.message || 'Unknown error');
+    const deliveryErr = new Error('Failed to deliver verification email through SMTP provider.');
+    deliveryErr.code = 'EMAIL_DELIVERY_FAILED';
+    throw deliveryErr;
+  }
 };
 
 export default {
   sendVerificationEmail,
   testMailbox,
   getClientBaseUrl,
+  createTransporter,
 };

@@ -389,6 +389,112 @@ describe('Authentication & User Profile API Tests', () => {
       const migratedUser = await User.findOne({ email: 'legacy@example.com' });
       assert.equal(migratedUser.emailVerified, true);
     });
+
+    test('production mode with missing SMTP configuration fails signup with 503 and rolls back user document', async () => {
+      const prevNodeEnv = process.env.NODE_ENV;
+      const prevHost = process.env.SMTP_HOST;
+      delete process.env.SMTP_HOST;
+      process.env.NODE_ENV = 'production';
+
+      try {
+        const res = await fetch(`${baseUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: 'failed_email_user',
+            email: 'failed_email@example.com',
+            password: 'Password123!',
+          }),
+        });
+
+        assert.equal(res.status, 503);
+        const data = await res.json();
+        assert.equal(data.status, 'error');
+        assert.equal(data.code, 'EMAIL_DELIVERY_FAILED');
+        assert.match(data.message, /unable to send verification email/i);
+
+        // Verify that user document was cleanly rolled back / deleted
+        const rolledBackUser = await User.findOne({ email: 'failed_email@example.com' });
+        assert.equal(rolledBackUser, null);
+
+        // Verify that another signup with same credentials succeeds once SMTP is working
+        process.env.NODE_ENV = 'test';
+        const retryRes = await fetch(`${baseUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: 'failed_email_user',
+            email: 'failed_email@example.com',
+            password: 'Password123!',
+          }),
+        });
+        assert.equal(retryRes.status, 201);
+        const retryData = await retryRes.json();
+        assert.equal(retryData.status, 'success');
+        assert.equal(retryData.requiresVerification, true);
+      } finally {
+        process.env.NODE_ENV = prevNodeEnv;
+        if (prevHost) process.env.SMTP_HOST = prevHost;
+      }
+    });
+
+    test('production mode with missing SMTP configuration returns 503 during resend-verification', async () => {
+      const prevNodeEnv = process.env.NODE_ENV;
+      const prevHost = process.env.SMTP_HOST;
+      delete process.env.SMTP_HOST;
+      process.env.NODE_ENV = 'production';
+
+      try {
+        // Fast-forward cooldown for unverified user
+        await User.updateOne(
+          { email: 'failed_email@example.com' },
+          { lastVerificationEmailSentAt: new Date(Date.now() - 1000 * 70) }
+        );
+
+        const res = await fetch(`${baseUrl}/api/auth/resend-verification`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'failed_email@example.com' }),
+        });
+
+        assert.equal(res.status, 503);
+        const data = await res.json();
+        assert.equal(data.status, 'error');
+        assert.equal(data.code, 'EMAIL_DELIVERY_FAILED');
+        assert.match(data.message, /unable to send verification email/i);
+      } finally {
+        process.env.NODE_ENV = prevNodeEnv;
+        if (prevHost) process.env.SMTP_HOST = prevHost;
+      }
+    });
+
+    test('security audit: error responses never leak stack traces, transport info, or credentials', async () => {
+      const prevNodeEnv = process.env.NODE_ENV;
+      delete process.env.SMTP_HOST;
+      process.env.NODE_ENV = 'production';
+
+      try {
+        const res = await fetch(`${baseUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: 'sec_audit_user',
+            email: 'sec_audit@example.com',
+            password: 'Password123!',
+          }),
+        });
+
+        const text = await res.text();
+        assert.equal(text.includes('password'), false);
+        assert.equal(text.includes('jwt'), false);
+        assert.equal(text.includes('mongodb'), false);
+        assert.equal(text.includes('nodemailer'), false);
+        assert.equal(text.includes('stack'), false);
+        assert.equal(text.includes('    at '), false); // No stack traces
+      } finally {
+        process.env.NODE_ENV = prevNodeEnv;
+      }
+    });
   });
 
   describe('POST /api/auth/login', () => {

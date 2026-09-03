@@ -121,7 +121,19 @@ export const signup = async (req, res) => {
     });
 
     // Send verification email
-    await sendVerificationEmail(trimmedEmail, trimmedUsername, rawVerificationToken);
+    try {
+      await sendVerificationEmail(trimmedEmail, trimmedUsername, rawVerificationToken);
+    } catch (emailErr) {
+      console.error('[Auth Controller] Failed to dispatch verification email during signup:', emailErr.code || emailErr.message);
+      // Roll back / delete unverified account so email is not locked in orphaned unverified state
+      await User.deleteOne({ _id: newUser._id });
+
+      return res.status(503).json({
+        status: 'error',
+        code: 'EMAIL_DELIVERY_FAILED',
+        message: 'Unable to send verification email at this time. Please check your email address or try again shortly.',
+      });
+    }
 
     return res.status(201).json({
       status: 'success',
@@ -342,7 +354,16 @@ export const resendVerification = async (req, res) => {
     user.lastVerificationEmailSentAt = new Date(now);
     await user.save();
 
-    await sendVerificationEmail(user.email, user.username, rawVerificationToken);
+    try {
+      await sendVerificationEmail(user.email, user.username, rawVerificationToken);
+    } catch (emailErr) {
+      console.error('[Auth Controller] Failed to dispatch verification email during resend:', emailErr.code || emailErr.message);
+      return res.status(503).json({
+        status: 'error',
+        code: 'EMAIL_DELIVERY_FAILED',
+        message: 'Unable to send verification email at this time. Please try again shortly.',
+      });
+    }
 
     return res.status(200).json({
       status: 'success',
