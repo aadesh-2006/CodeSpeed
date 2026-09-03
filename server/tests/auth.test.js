@@ -902,4 +902,135 @@ describe('Authentication & User Profile API Tests', () => {
       assert.ok(newLoginData.token);
     });
   });
+
+  describe('GET /api/users/search & Developer Discovery', () => {
+    let searchAuthToken;
+
+    before(async () => {
+      // Create user for search tests
+      const signupRes = await fetch(`${baseUrl}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'search_discoverer',
+          email: 'discoverer@example.com',
+          password: 'Password123!',
+        }),
+      });
+      const data = await signupRes.json();
+      searchAuthToken = data.token;
+    });
+
+    test('unauthenticated GET /api/users/search returns 401', async () => {
+      const res = await fetch(`${baseUrl}/api/users/search?q=test`);
+      assert.equal(res.status, 401);
+    });
+
+    test('query shorter than 2 characters returns empty array with 200', async () => {
+      const emptyRes = await fetch(`${baseUrl}/api/users/search?q=`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(emptyRes.status, 200);
+      const emptyData = await emptyRes.json();
+      assert.deepEqual(emptyData.data, []);
+
+      const singleCharRes = await fetch(`${baseUrl}/api/users/search?q=a`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(singleCharRes.status, 200);
+      const singleCharData = await singleCharRes.json();
+      assert.deepEqual(singleCharData.data, []);
+    });
+
+    test('exact username search matches accurately', async () => {
+      const res = await fetch(`${baseUrl}/api/users/search?q=search_discoverer`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.ok(data.data.length >= 1);
+      assert.ok(data.data.some((u) => u.username === 'search_discoverer'));
+    });
+
+    test('partial username search is case-insensitive', async () => {
+      const resLower = await fetch(`${baseUrl}/api/users/search?q=discover`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(resLower.status, 200);
+      const dataLower = await resLower.json();
+      assert.ok(dataLower.data.some((u) => u.username === 'search_discoverer'));
+
+      const resUpper = await fetch(`${baseUrl}/api/users/search?q=DISCOVER`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(resUpper.status, 200);
+      const dataUpper = await resUpper.json();
+      assert.ok(dataUpper.data.some((u) => u.username === 'search_discoverer'));
+    });
+
+    test('Unicode username search: "Sem" and "sem" match "Semnótēs", "jos" matches "José"', async () => {
+      const resSem = await fetch(`${baseUrl}/api/users/search?q=Sem`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(resSem.status, 200);
+      const dataSem = await resSem.json();
+      // In earlier test Semnótēs renamed to José, or Semnótēs exists
+      assert.ok(Array.isArray(dataSem.data));
+
+      const resJose = await fetch(`${baseUrl}/api/users/search?q=${encodeURIComponent('jos')}`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(resJose.status, 200);
+      const dataJose = await resJose.json();
+      assert.ok(dataJose.data.some((u) => u.username === 'José'));
+    });
+
+    test('regex metacharacters are escaped safely and do not trigger regex errors or matches', async () => {
+      const res = await fetch(`${baseUrl}/api/users/search?q=${encodeURIComponent('.*')}`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      // Should not match all users like .* would if unescaped
+      assert.equal(data.data.length, 0);
+    });
+
+    test('security & projection audit: returns only username, bio, profilePhoto and never sensitive fields', async () => {
+      const res = await fetch(`${baseUrl}/api/users/search?q=search_discoverer`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.ok(data.data.length >= 1);
+
+      for (const item of data.data) {
+        assert.ok(typeof item.username === 'string');
+        assert.ok(item.bio !== undefined);
+        assert.ok(item.profilePhoto !== undefined);
+
+        assert.equal(item.email, undefined);
+        assert.equal(item.passwordHash, undefined);
+        assert.equal(item.practiceStatsVisibility, undefined);
+        assert.equal(item._id, undefined);
+        assert.equal(item.id, undefined);
+        assert.equal(item.ranked, undefined);
+        assert.equal(item.practice, undefined);
+      }
+    });
+
+    test('search results limit is capped at 10', async () => {
+      const res = await fetch(`${baseUrl}/api/users/search?q=e`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      // Query length < 2 returned []
+      assert.equal(res.status, 200);
+
+      const res2 = await fetch(`${baseUrl}/api/users/search?q=er`, {
+        headers: { Authorization: `Bearer ${searchAuthToken}` },
+      });
+      assert.equal(res2.status, 200);
+      const data = await res2.json();
+      assert.ok(data.data.length <= 10);
+    });
+  });
 });

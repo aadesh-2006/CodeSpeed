@@ -8,6 +8,7 @@ import TestResult from './components/TestResult';
 import PerformanceHistory from './components/PerformanceHistory';
 import PublicProfile from './components/PublicProfile';
 import Settings from './components/Settings';
+import UserSearch from './components/UserSearch';
 import { SUPPORTED_LANGUAGES, getRandomSnippet } from './data/snippets';
 import './App.css';
 
@@ -256,33 +257,40 @@ function App() {
 
           <div className="navbar-right">
             {user ? (
-              <div className="user-profile-menu">
-                <button
-                  type="button"
-                  className="user-nav-btn"
-                  onClick={() => {
-                    window.location.hash = `/user/${encodeURIComponent(user.username)}`;
+              <>
+                <UserSearch
+                  onSelectUser={(un) => {
+                    window.location.hash = `/user/${encodeURIComponent(un)}`;
                   }}
-                  title="View your public profile"
-                >
-                  <span className="user-nav-avatar">
-                    {user.profilePhoto ? (
-                      <img src={user.profilePhoto} alt="" className="user-nav-photo" />
-                    ) : (
-                      (user.username || 'U')[0].toUpperCase()
-                    )}
-                  </span>
-                  <span className="user-nav-name">{user.username}</span>
-                </button>
-                <button
-                  type="button"
-                  className="logout-text-btn"
-                  onClick={handleLogout}
-                  title="Log out"
-                >
-                  Log out
-                </button>
-              </div>
+                />
+                <div className="user-profile-menu">
+                  <button
+                    type="button"
+                    className="user-nav-btn"
+                    onClick={() => {
+                      window.location.hash = `/user/${encodeURIComponent(user.username)}`;
+                    }}
+                    title="View your public profile"
+                  >
+                    <span className="user-nav-avatar">
+                      {user.profilePhoto ? (
+                        <img src={user.profilePhoto} alt="" className="user-nav-photo" />
+                      ) : (
+                        (user.username || 'U')[0].toUpperCase()
+                      )}
+                    </span>
+                    <span className="user-nav-name">{user.username}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="logout-text-btn"
+                    onClick={handleLogout}
+                    title="Log out"
+                  >
+                    Log out
+                  </button>
+                </div>
+              </>
             ) : null}
           </div>
         </div>

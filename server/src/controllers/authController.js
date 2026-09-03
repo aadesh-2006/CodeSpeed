@@ -608,3 +608,50 @@ export const getPublicProfile = async (req, res) => {
     });
   }
 };
+
+/**
+ * Search users by username for developer discovery.
+ * GET /api/users/search?q=<query>
+ */
+export const searchUsers = async (req, res) => {
+  try {
+    const rawQuery = req.query?.q ? String(req.query.q).trim() : '';
+
+    // Minimum query length 2 characters to prevent massive broad searches
+    if (!rawQuery || rawQuery.length < 2) {
+      return res.status(200).json({
+        status: 'success',
+        data: [],
+      });
+    }
+
+    // Limit maximum query length
+    const query = rawQuery.slice(0, 50);
+
+    // Escape regex characters safely for case-insensitive partial substring match
+    const searchRegex = new RegExp(escapeRegex(query), 'i');
+
+    const users = await User.find({ username: { $regex: searchRegex } })
+      .select('username bio profilePhoto -_id')
+      .sort({ username: 1 })
+      .limit(10);
+
+    const safeResults = users.map((u) => ({
+      username: u.username,
+      bio: u.bio || '',
+      profilePhoto: u.profilePhoto || null,
+    }));
+
+    return res.status(200).json({
+      status: 'success',
+      data: safeResults,
+    });
+  } catch (error) {
+    console.error('[Auth Controller] SearchUsers error:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Server error searching developers.',
+    });
+  }
+};
+
