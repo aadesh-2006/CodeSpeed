@@ -198,7 +198,7 @@ function App() {
       <header className="navbar">
         <div className="navbar-container">
           <div className="navbar-brand" onClick={() => { setCurrentView('dashboard'); setPublicProfileUsername(null); }}>
-            <span className="brand-symbol">&gt;_</span>
+            <img src="/codespeed-logo.png" alt="CodeSpeed Logo" className="brand-logo" />
             <span className="brand-name">CodeSpeed</span>
           </div>
 
