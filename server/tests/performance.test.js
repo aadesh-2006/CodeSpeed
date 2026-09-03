@@ -1107,7 +1107,7 @@ describe('Performance Persistence, History & Sorting API Tests', () => {
         snippetId: 'iso-prac-1',
       });
 
-      // 2 Ranked tests: 80 WPM, 90 WPM
+      // 2 Ranked tests: 80 WPM, 90 WPM (with explicit chronological createdAt)
       await Performance.create({
         userId: isoUser._id,
         mode: 'ranked',
@@ -1120,6 +1120,7 @@ describe('Performance Persistence, History & Sorting API Tests', () => {
         incorrectChars: 0,
         elapsedSeconds: 60,
         snippetId: 'iso-rank-1',
+        createdAt: new Date(Date.now() + 1000),
       });
       await Performance.create({
         userId: isoUser._id,
@@ -1133,6 +1134,7 @@ describe('Performance Persistence, History & Sorting API Tests', () => {
         incorrectChars: 0,
         elapsedSeconds: 60,
         snippetId: 'iso-rank-2',
+        createdAt: new Date(Date.now() + 2000),
       });
 
       // Query Practice History

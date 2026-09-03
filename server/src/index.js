@@ -10,20 +10,46 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
-const allowedOrigins = CLIENT_URL.split(',').map((u) => u.trim());
+const defaultOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'https://code-speed-five.vercel.app',
+];
+
+const clientEnvOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(',').map((u) => u.trim().replace(/\/$/, '')).filter(Boolean)
+  : [];
+
+const allowedOrigins = [...new Set([...defaultOrigins, ...clientEnvOrigins])];
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  const cleanOrigin = origin.trim().replace(/\/$/, '');
+  if (allowedOrigins.includes(cleanOrigin) || allowedOrigins.includes('*')) {
+    return true;
+  }
+  // Allow all Vercel deployment and preview subdomains
+  if (/^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(cleanOrigin)) {
+    return true;
+  }
+  return false;
+};
 
 // Middleware
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
-      return callback(null, true);
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
     }
-    return callback(new Error(`Origin '${origin}' not allowed by CORS policy.`));
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+app.options('*', cors());
 app.use(express.json());
 
 // Routes
