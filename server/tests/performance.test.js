@@ -912,4 +912,383 @@ describe('Performance Persistence, History & Sorting API Tests', () => {
       assert.equal(resB.data.data.personalBest.language, 'cpp');
     });
   });
+
+  /* ========================================================
+     M9 — Ranked Mode, Anti-Tamper & Badges API Tests
+     ======================================================== */
+  describe('M9 — Migration, Ranked Mode, Anti-Tamper & Badges', () => {
+    let m9User;
+    let m9Token;
+
+    before(async () => {
+      m9User = await User.create({
+        username: 'rankedchampion',
+        email: 'champion@example.com',
+        passwordHash: 'dummyhash123',
+      });
+      m9Token = jwt.sign({ id: m9User._id.toString() }, JWT_TEST_SECRET, { expiresIn: '1h' });
+    });
+
+    test('migration script classifies legacy documents missing mode as practice', async () => {
+      const { migrateModes } = await import('../scripts/migrate-modes.js');
+
+      // Create a legacy document missing the mode field entirely using native collection
+      const legacyDoc = {
+        userId: m9User._id,
+        language: 'python',
+        difficulty: 'easy',
+        timerSeconds: 60,
+        wpm: 55,
+        accuracy: 98,
+        correctChars: 275,
+        incorrectChars: 5,
+        elapsedSeconds: 60,
+        snippetId: 'legacy-py-01',
+        createdAt: new Date(),
+      };
+      await Performance.collection.insertOne(legacyDoc);
+
+      const docBefore = await Performance.collection.findOne({ snippetId: 'legacy-py-01' });
+      assert.equal(docBefore.mode, undefined);
+
+      // Run migration
+      const result = await migrateModes(mongoose);
+      assert.ok(result.modifiedCount >= 1);
+
+      const docAfter = await Performance.collection.findOne({ snippetId: 'legacy-py-01' });
+      assert.equal(docAfter.mode, 'practice');
+    });
+
+    test('POST /api/performances accepts valid mode practice and ranked', async () => {
+      const resPractice = await makeRequest('/api/performances', {
+        method: 'POST',
+        token: m9Token,
+        body: {
+          mode: 'practice',
+          language: 'python',
+          difficulty: 'medium',
+          timerSeconds: 60,
+          wpm: 60,
+          accuracy: 100,
+          correctChars: 300,
+          incorrectChars: 0,
+          elapsedSeconds: 60,
+          snippetId: 'py-prac-01',
+        },
+      });
+      assert.equal(resPractice.status, 201);
+      assert.equal(resPractice.data.data.performance.mode, 'practice');
+
+      const resRanked = await makeRequest('/api/performances', {
+        method: 'POST',
+        token: m9Token,
+        body: {
+          mode: 'ranked',
+          language: 'python',
+          difficulty: 'medium',
+          timerSeconds: 60,
+          wpm: 60,
+          accuracy: 100,
+          correctChars: 300,
+          incorrectChars: 0,
+          elapsedSeconds: 60,
+          snippetId: 'py-rank-01',
+        },
+      });
+      assert.equal(resRanked.status, 201);
+      assert.equal(resRanked.data.data.performance.mode, 'ranked');
+    });
+
+    test('POST /api/performances rejects invalid mode values with 400', async () => {
+      const res = await makeRequest('/api/performances', {
+        method: 'POST',
+        token: m9Token,
+        body: {
+          mode: 'unranked_custom',
+          language: 'python',
+          difficulty: 'medium',
+          timerSeconds: 60,
+          wpm: 60,
+          accuracy: 100,
+          correctChars: 300,
+          incorrectChars: 0,
+          elapsedSeconds: 60,
+          snippetId: 'py-test-01',
+        },
+      });
+      assert.equal(res.status, 400);
+      assert.match(res.data.message, /mode/i);
+    });
+
+    test('anti-tamper: rejects impossible WPM (> 350 WPM) with 400', async () => {
+      const res = await makeRequest('/api/performances', {
+        method: 'POST',
+        token: m9Token,
+        body: {
+          mode: 'ranked',
+          language: 'python',
+          difficulty: 'medium',
+          timerSeconds: 60,
+          wpm: 450,
+          accuracy: 100,
+          correctChars: 2250,
+          incorrectChars: 0,
+          elapsedSeconds: 60,
+          snippetId: 'py-cheat-01',
+        },
+      });
+      assert.equal(res.status, 400);
+      assert.match(res.data.message, /ceiling/i);
+    });
+
+    test('anti-tamper: rejects mathematically inconsistent character accuracy with 400', async () => {
+      const res = await makeRequest('/api/performances', {
+        method: 'POST',
+        token: m9Token,
+        body: {
+          mode: 'ranked',
+          language: 'python',
+          difficulty: 'medium',
+          timerSeconds: 60,
+          wpm: 60,
+          accuracy: 99.5, // Claims 99.5% accuracy but typed 100 correct + 100 incorrect (50% real accuracy)
+          correctChars: 300,
+          incorrectChars: 300,
+          elapsedSeconds: 60,
+          snippetId: 'py-cheat-02',
+        },
+      });
+      assert.equal(res.status, 400);
+      assert.match(res.data.message, /inconsistent/i);
+    });
+
+    test('anti-tamper: rejects elapsed time exceeding timer duration + 5s grace with 400', async () => {
+      const res = await makeRequest('/api/performances', {
+        method: 'POST',
+        token: m9Token,
+        body: {
+          mode: 'ranked',
+          language: 'python',
+          difficulty: 'medium',
+          timerSeconds: 30,
+          wpm: 60,
+          accuracy: 100,
+          correctChars: 150,
+          incorrectChars: 0,
+          elapsedSeconds: 50, // Exceeds 30s + 5s grace
+          snippetId: 'py-cheat-03',
+        },
+      });
+      assert.equal(res.status, 400);
+      assert.match(res.data.message, /grace/i);
+    });
+
+    test('GET /api/performances, /graph, and /summary isolate practice vs ranked data', async () => {
+      // Create fresh user for mode isolation test
+      const isoUser = await User.create({
+        username: 'isouser',
+        email: 'iso@example.com',
+        passwordHash: 'dummyhash',
+      });
+      const isoToken = jwt.sign({ id: isoUser._id.toString() }, JWT_TEST_SECRET, { expiresIn: '1h' });
+
+      // 1 Practice test: 50 WPM
+      await Performance.create({
+        userId: isoUser._id,
+        mode: 'practice',
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 50,
+        accuracy: 100,
+        correctChars: 250,
+        incorrectChars: 0,
+        elapsedSeconds: 60,
+        snippetId: 'iso-prac-1',
+      });
+
+      // 2 Ranked tests: 80 WPM, 90 WPM
+      await Performance.create({
+        userId: isoUser._id,
+        mode: 'ranked',
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 80,
+        accuracy: 100,
+        correctChars: 400,
+        incorrectChars: 0,
+        elapsedSeconds: 60,
+        snippetId: 'iso-rank-1',
+      });
+      await Performance.create({
+        userId: isoUser._id,
+        mode: 'ranked',
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 90,
+        accuracy: 100,
+        correctChars: 450,
+        incorrectChars: 0,
+        elapsedSeconds: 60,
+        snippetId: 'iso-rank-2',
+      });
+
+      // Query Practice History
+      const resPracHist = await makeRequest('/api/performances?mode=practice', {
+        method: 'GET',
+        token: isoToken,
+      });
+      assert.equal(resPracHist.data.data.performances.length, 1);
+      assert.equal(resPracHist.data.data.performances[0].snippetId, 'iso-prac-1');
+
+      // Query Ranked History
+      const resRankHist = await makeRequest('/api/performances?mode=ranked', {
+        method: 'GET',
+        token: isoToken,
+      });
+      assert.equal(resRankHist.data.data.performances.length, 2);
+      assert.equal(resRankHist.data.data.performances[0].snippetId, 'iso-rank-2');
+
+      // Query Practice Summary
+      const resPracSum = await makeRequest('/api/performances/summary?mode=practice', {
+        method: 'GET',
+        token: isoToken,
+      });
+      assert.equal(resPracSum.data.data.totalTests, 1);
+      assert.equal(resPracSum.data.data.personalBest.wpm, 50);
+
+      // Query Ranked Summary
+      const resRankSum = await makeRequest('/api/performances/summary?mode=ranked', {
+        method: 'GET',
+        token: isoToken,
+      });
+      assert.equal(resRankSum.data.data.totalTests, 2);
+      assert.equal(resRankSum.data.data.personalBest.wpm, 90);
+
+      // Query Graphs
+      const resPracGraph = await makeRequest('/api/performances/graph?mode=practice', {
+        method: 'GET',
+        token: isoToken,
+      });
+      assert.equal(resPracGraph.data.data.graphData.length, 1);
+
+      const resRankGraph = await makeRequest('/api/performances/graph?mode=ranked', {
+        method: 'GET',
+        token: isoToken,
+      });
+      assert.equal(resRankGraph.data.data.graphData.length, 2);
+    });
+
+    test('GET /api/performances/badges evaluates speed milestones, 5-streaks, streak resets, and volume', async () => {
+      const badgeUser = await User.create({
+        username: 'badgeuser',
+        email: 'badge@example.com',
+        passwordHash: 'dummyhash',
+      });
+      const badgeToken = jwt.sign({ id: badgeUser._id.toString() }, JWT_TEST_SECRET, { expiresIn: '1h' });
+
+      // Check initial 0 tests
+      const resInit = await makeRequest('/api/performances/badges', { method: 'GET', token: badgeToken });
+      assert.equal(resInit.status, 200);
+      assert.equal(resInit.data.data.earnedCount, 0);
+      assert.equal(resInit.data.data.totalBadges, 14);
+
+      // Add 1 high practice attempt (120 WPM) -> MUST NOT award any badges
+      await Performance.create({
+        userId: badgeUser._id,
+        mode: 'practice',
+        language: 'python',
+        difficulty: 'hard',
+        timerSeconds: 60,
+        wpm: 120,
+        accuracy: 100,
+        correctChars: 600,
+        incorrectChars: 0,
+        elapsedSeconds: 60,
+        snippetId: 'prac-super',
+      });
+
+      const resPracCheck = await makeRequest('/api/performances/badges', { method: 'GET', token: badgeToken });
+      assert.equal(resPracCheck.data.data.earnedCount, 0);
+
+      // Add 4 consecutive ranked tests >= 50 WPM
+      for (let i = 1; i <= 4; i++) {
+        await Performance.create({
+          userId: badgeUser._id,
+          mode: 'ranked',
+          language: 'python',
+          difficulty: 'medium',
+          timerSeconds: 60,
+          wpm: 55,
+          accuracy: 98,
+          correctChars: 275,
+          incorrectChars: 5,
+          elapsedSeconds: 60,
+          snippetId: `rank-streak-${i}`,
+          createdAt: new Date(Date.now() + i * 1000),
+        });
+      }
+
+      // Check: 'first_ranked' and 'wpm_50' earned, but 'streak_50_5' NOT yet (only 4 streak)
+      const res4Streak = await makeRequest('/api/performances/badges', { method: 'GET', token: badgeToken });
+      const badges4 = res4Streak.data.data.badges;
+      const bFirst = badges4.find((b) => b.id === 'first_ranked');
+      const bWpm50 = badges4.find((b) => b.id === 'wpm_50');
+      const bStreak50 = badges4.find((b) => b.id === 'streak_50_5');
+
+      assert.equal(bFirst.earned, true);
+      assert.equal(bWpm50.earned, true);
+      assert.equal(bStreak50.earned, false);
+      assert.equal(bStreak50.progress.current, 4);
+
+      // 5th attempt: drops below 50 WPM (40 WPM) -> Streak breaks!
+      await Performance.create({
+        userId: badgeUser._id,
+        mode: 'ranked',
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 40,
+        accuracy: 98,
+        correctChars: 200,
+        incorrectChars: 5,
+        elapsedSeconds: 60,
+        snippetId: 'rank-broken-streak',
+        createdAt: new Date(Date.now() + 5000),
+      });
+
+      const resBroken = await makeRequest('/api/performances/badges', { method: 'GET', token: badgeToken });
+      const bStreakBroken = resBroken.data.data.badges.find((b) => b.id === 'streak_50_5');
+      assert.equal(bStreakBroken.earned, false);
+      assert.equal(bStreakBroken.progress.activeStreak, 0);
+
+      // Now complete 5 consecutive >= 50 WPM attempts
+      for (let i = 6; i <= 10; i++) {
+        await Performance.create({
+          userId: badgeUser._id,
+          mode: 'ranked',
+          language: 'python',
+          difficulty: 'medium',
+          timerSeconds: 60,
+          wpm: 60,
+          accuracy: 98,
+          correctChars: 300,
+          incorrectChars: 5,
+          elapsedSeconds: 60,
+          snippetId: `rank-streak-win-${i}`,
+          createdAt: new Date(Date.now() + i * 1000),
+        });
+      }
+
+      // Check: 'streak_50_5' and 'ranked_10' NOW earned!
+      const resWon = await makeRequest('/api/performances/badges', { method: 'GET', token: badgeToken });
+      const bStreakWon = resWon.data.data.badges.find((b) => b.id === 'streak_50_5');
+      const bRanked10 = resWon.data.data.badges.find((b) => b.id === 'ranked_10');
+
+      assert.equal(bStreakWon.earned, true);
+      assert.equal(bRanked10.earned, true);
+    });
+  });
 });

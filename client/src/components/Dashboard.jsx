@@ -1,9 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import BadgesGrid from './BadgesGrid';
+import PrivacySettingsModal from './PrivacySettingsModal';
 import { SUPPORTED_LANGUAGES, TIMER_OPTIONS } from '../data/snippets';
 import { formatTime } from '../utils/typingMetrics';
 
-export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
+export function Dashboard({
+  user,
+  onNavigateToPractice,
+  onNavigateToRanked,
+  onNavigateToHistory,
+  onViewPublicProfile,
+  onUserUpdate,
+}) {
+  const [dashboardMode, setDashboardMode] = useState('practice'); // 'practice' | 'ranked'
   const [summary, setSummary] = useState({
     totalTests: 0,
     totalTimeTypedSeconds: 0,
@@ -13,14 +23,17 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
     languageBreakdown: [],
     recentAttempts: [],
   });
+  const [badges, setBadges] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [badgesLoading, setBadgesLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
 
   const fetchSummary = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.getPerformanceSummary();
+      const res = await api.getPerformanceSummary({ mode: dashboardMode });
       if (res && res.data) {
         setSummary(res.data);
       }
@@ -30,11 +43,36 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dashboardMode]);
+
+  const fetchBadges = useCallback(async () => {
+    if (dashboardMode !== 'ranked') return;
+    setBadgesLoading(true);
+    try {
+      const res = await api.getBadges();
+      if (res && res.data) {
+        setBadges(res.data.badges || []);
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to load badges:', err.message);
+    } finally {
+      setBadgesLoading(false);
+    }
+  }, [dashboardMode]);
 
   useEffect(() => {
     fetchSummary();
-  }, [fetchSummary]);
+    if (dashboardMode === 'ranked') {
+      fetchBadges();
+    }
+  }, [fetchSummary, fetchBadges, dashboardMode]);
+
+  const handleSavePrivacy = async (newVisibility) => {
+    const res = await api.updatePrivacy({ practiceStatsVisibility: newVisibility });
+    if (res && res.data && res.data.user && onUserUpdate) {
+      onUserUpdate(res.data.user);
+    }
+  };
 
   const getLanguageName = (langId) => {
     const found = SUPPORTED_LANGUAGES.find((l) => l.id.toLowerCase() === (langId || '').toLowerCase());
@@ -60,28 +98,84 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
     }
   };
 
+  const isRanked = dashboardMode === 'ranked';
+
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container ${isRanked ? 'dashboard-ranked-theme' : ''}`}>
       {/* Dashboard Top Greeting & CTA Bar */}
       <div className="dashboard-header">
         <div>
           <h2 className="dashboard-title">
-            Welcome back, <span className="text-cyan">{user?.username || 'Coder'}</span>
+            Welcome back, <span className={isRanked ? 'text-amber' : 'text-cyan'}>{user?.username || 'Coder'}</span>
           </h2>
-          <p className="dashboard-subtitle">Here is your typing speed and coding practice overview.</p>
+          <p className="dashboard-subtitle">
+            {isRanked
+              ? 'Ranked competitive progression, personal bests, and unlocked badges.'
+              : 'Casual practice statistics, language breakdown, and typing progress.'}
+          </p>
         </div>
 
         <div className="dashboard-header-actions">
-          <button type="button" className="action-btn primary-btn compact" onClick={onNavigateToPractice}>
-            &gt;_ Start Practice
+          {onViewPublicProfile && (
+            <button
+              type="button"
+              className="action-btn secondary-btn compact"
+              onClick={() => onViewPublicProfile(user?.username)}
+            >
+              🌐 Public Profile
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="action-btn secondary-btn compact"
+            onClick={() => setPrivacyModalOpen(true)}
+            title="Configure practice stats privacy"
+          >
+            {user?.practiceStatsVisibility === 'public' ? '🌐 Public Stats' : '🔒 Private Stats'}
           </button>
-          <button type="button" className="action-btn secondary-btn compact" onClick={onNavigateToHistory}>
-            History &amp; Graph &rarr;
+
+          <button
+            type="button"
+            className="action-btn primary-btn compact"
+            onClick={isRanked ? onNavigateToRanked : onNavigateToPractice}
+          >
+            {isRanked ? '🏆 Start Ranked' : '>_ Start Practice'}
           </button>
-          <button type="button" className="refresh-btn" onClick={fetchSummary} title="Refresh dashboard">
+
+          <button
+            type="button"
+            className="refresh-btn"
+            onClick={() => {
+              fetchSummary();
+              if (isRanked) fetchBadges();
+            }}
+            title="Refresh dashboard"
+          >
             &#x21BB;
           </button>
         </div>
+      </div>
+
+      {/* Mode Switcher Tabs */}
+      <div className="dashboard-mode-tabs">
+        <button
+          type="button"
+          className={`dash-mode-tab ${!isRanked ? 'active practice' : ''}`}
+          onClick={() => setDashboardMode('practice')}
+        >
+          <span className="tab-icon">⌨️</span>
+          <span>Practice Overview</span>
+        </button>
+
+        <button
+          type="button"
+          className={`dash-mode-tab ${isRanked ? 'active ranked' : ''}`}
+          onClick={() => setDashboardMode('ranked')}
+        >
+          <span className="tab-icon">🏆</span>
+          <span>Ranked Overview &amp; Badges</span>
+        </button>
       </div>
 
       {/* Loading State */}
@@ -92,7 +186,7 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
             <div className="skeleton-line row"></div>
             <div className="skeleton-line row"></div>
           </div>
-          <p>Loading your dashboard summary...</p>
+          <p>Loading {isRanked ? 'ranked' : 'practice'} summary...</p>
         </div>
       )}
 
@@ -110,11 +204,19 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
       {/* Fresh Account Empty State */}
       {!loading && !error && summary.totalTests === 0 && (
         <div className="dashboard-state-card empty">
-          <div className="empty-symbol">&gt;_</div>
-          <h3>Welcome to CodeSpeed!</h3>
-          <p>You haven't completed any typing tests yet. Take your first test to unlock your stats dashboard!</p>
-          <button type="button" className="action-btn primary-btn" onClick={onNavigateToPractice}>
-            Start Your First Test
+          <div className="empty-symbol">{isRanked ? '🏆' : '>_'}</div>
+          <h3>{isRanked ? 'No Ranked Attempts Yet' : 'Welcome to CodeSpeed!'}</h3>
+          <p>
+            {isRanked
+              ? 'Complete your first competitive ranked typing test to start earning badges and climb your WPM milestones!'
+              : "You haven't completed any practice tests yet. Take your first test to unlock your stats dashboard!"}
+          </p>
+          <button
+            type="button"
+            className={`action-btn ${isRanked ? 'start-ranked-btn' : 'primary-btn'}`}
+            onClick={isRanked ? onNavigateToRanked : onNavigateToPractice}
+          >
+            {isRanked ? 'Start First Ranked Test' : 'Start Your First Test'}
           </button>
         </div>
       )}
@@ -125,13 +227,15 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
           {/* Key Metrics Grid */}
           <div className="metrics-grid">
             {/* Personal Best Card */}
-            <div className="metric-card pb-card">
+            <div className={`metric-card pb-card ${isRanked ? 'ranked' : ''}`}>
               <div className="metric-card-top">
                 <span className="metric-icon">&#x1F3C6;</span>
-                <span className="metric-label">Personal Best</span>
+                <span className="metric-label">{isRanked ? 'Ranked Best' : 'Practice Best'}</span>
               </div>
               <div className="metric-value-row">
-                <span className="metric-value text-cyan">{summary.personalBest?.wpm || 0}</span>
+                <span className={`metric-value ${isRanked ? 'text-amber' : 'text-cyan'}`}>
+                  {summary.personalBest?.wpm || 0}
+                </span>
                 <span className="metric-unit">WPM</span>
               </div>
               {summary.personalBest && (
@@ -178,7 +282,7 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
                 <span className="metric-value">{summary.totalTests}</span>
                 <span className="metric-unit">sessions</span>
               </div>
-              <span className="metric-sub">Recorded attempts</span>
+              <span className="metric-sub">Recorded {isRanked ? 'ranked' : 'practice'} attempts</span>
             </div>
 
             {/* Total Time Card */}
@@ -192,9 +296,14 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
                   {formatTime(summary.totalTimeTypedSeconds)}
                 </span>
               </div>
-              <span className="metric-sub">Total coding time</span>
+              <span className="metric-sub">Total session time</span>
             </div>
           </div>
+
+          {/* If in Ranked mode: Show Ranked Badges Grid */}
+          {isRanked && (
+            <BadgesGrid badges={badges} loading={badgesLoading} />
+          )}
 
           {/* Section: Language Breakdown & Recent Attempts */}
           <div className="dashboard-two-col">
@@ -215,7 +324,7 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
                     <div className="lang-breakdown-stats">
                       <div className="lang-stat-chip">
                         <span className="chip-lbl">Best:</span>
-                        <strong className="chip-val text-cyan">{item.bestWpm} WPM</strong>
+                        <strong className={`chip-val ${isRanked ? 'text-amber' : 'text-cyan'}`}>{item.bestWpm} WPM</strong>
                       </div>
                       <div className="lang-stat-chip">
                         <span className="chip-lbl">Avg:</span>
@@ -230,8 +339,12 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
             {/* Recent Attempts Feed */}
             <div className="dashboard-section-card">
               <div className="section-card-header">
-                <h3 className="section-title">Recent Activity</h3>
-                <button type="button" className="link-action-btn" onClick={onNavigateToHistory}>
+                <h3 className="section-title">Recent {isRanked ? 'Ranked' : 'Practice'} Activity</h3>
+                <button
+                  type="button"
+                  className="link-action-btn"
+                  onClick={() => onNavigateToHistory(dashboardMode)}
+                >
                   View All &rarr;
                 </button>
               </div>
@@ -245,7 +358,9 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
                       <span className="recent-date">{formatTimestamp(attempt.createdAt)}</span>
                     </div>
                     <div className="recent-attempt-right">
-                      <span className="recent-wpm text-cyan">{attempt.wpm} WPM</span>
+                      <span className={`recent-wpm ${isRanked ? 'text-amber' : 'text-cyan'}`}>
+                        {attempt.wpm} WPM
+                      </span>
                       <span className="recent-acc text-green">{attempt.accuracy}%</span>
                     </div>
                   </div>
@@ -255,6 +370,14 @@ export function Dashboard({ user, onNavigateToPractice, onNavigateToHistory }) {
           </div>
         </div>
       )}
+
+      {/* Privacy Settings Modal */}
+      <PrivacySettingsModal
+        isOpen={privacyModalOpen}
+        onClose={() => setPrivacyModalOpen(false)}
+        currentVisibility={user?.practiceStatsVisibility || 'private'}
+        onSave={handleSavePrivacy}
+      />
     </div>
   );
 }

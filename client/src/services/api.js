@@ -70,11 +70,14 @@ async function request(endpoint, options = {}) {
 export const api = {
   get: (endpoint) => request(endpoint, { method: 'GET' }),
   post: (endpoint, body) => request(endpoint, { method: 'POST', body: JSON.stringify(body) }),
+  patch: (endpoint, body) => request(endpoint, { method: 'PATCH', body: JSON.stringify(body) }),
 
   // Auth specific shortcuts
   signup: (userData) => request('/api/auth/signup', { method: 'POST', body: JSON.stringify(userData) }),
   login: (credentials) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
   getMe: () => request('/api/auth/me', { method: 'GET' }),
+  updatePrivacy: (privacyPayload) => request('/api/auth/privacy', { method: 'PATCH', body: JSON.stringify(privacyPayload) }),
+  getPublicProfile: (username) => request(`/api/users/${encodeURIComponent(username)}/profile`, { method: 'GET' }),
 
   // Performance persistence & history
   savePerformance: (performanceData) =>
@@ -85,6 +88,9 @@ export const api = {
 
   getPerformances: (params = {}) => {
     const query = new URLSearchParams();
+    if (params.mode) {
+      query.append('mode', params.mode);
+    }
     if (params.language && params.language !== 'all') {
       query.append('language', params.language);
     }
@@ -106,6 +112,9 @@ export const api = {
 
   getPerformanceGraph: (params = {}) => {
     const query = new URLSearchParams();
+    if (params.mode) {
+      query.append('mode', params.mode);
+    }
     if (params.language && params.language !== 'all') {
       query.append('language', params.language);
     }
@@ -116,7 +125,16 @@ export const api = {
     return request(`/api/performances/graph${queryString}`, { method: 'GET' });
   },
 
-  getPerformanceSummary: () => request('/api/performances/summary', { method: 'GET' }),
+  getPerformanceSummary: (params = {}) => {
+    const query = new URLSearchParams();
+    if (params.mode) {
+      query.append('mode', params.mode);
+    }
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    return request(`/api/performances/summary${queryString}`, { method: 'GET' });
+  },
+
+  getBadges: () => request('/api/performances/badges', { method: 'GET' }),
 };
 
 export default api;

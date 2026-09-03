@@ -228,16 +228,19 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 | `GET` | `/api/health` | API health check | None |
 | `POST` | `/api/auth/signup` | Register a new user | `{ "username": "...", "email": "...", "password": "..." }` |
 | `POST` | `/api/auth/login` | Authenticate user & return JWT | `{ "email": "...", "password": "..." }` |
+| `GET` | `/api/users/:username/profile` | Retrieve shareable public profile (Always public ranked stats & badges; practice stats included only if user set privacy to public) | None |
 
 ### Protected Endpoints (Requires `Authorization: Bearer <token>`)
 
 | Method | Endpoint | Description | Request Body |
 |---|---|---|---|
 | `GET` | `/api/auth/me` | Fetch authenticated user profile | None |
-| `POST` | `/api/performances` | Record a completed typing performance | `{ "language": "...", "difficulty": "...", "timerSeconds": 60, "wpm": 75, "accuracy": 98.5, "correctChars": 375, "incorrectChars": 6, "elapsedSeconds": 60, "snippetId": "..." }` |
-| `GET` | `/api/performances` | Retrieve user performance history with optional query filters and sorting (`?language=...&timerSeconds=...&sort=newest|wpm_desc|wpm_asc&page=...&limit=...`) | None |
-| `GET` | `/api/performances/graph` | Retrieve complete chronological WPM progression dataset (`createdAt ASC`) with sequential 1-based attempt numbering (`?language=...&timerSeconds=...`) | None |
-| `GET` | `/api/performances/summary` | Retrieve aggregated dashboard statistics (Personal Best, Average WPM, Average Accuracy, Total Tests, Time Typed, Language Breakdown, Recent Activity) | None |
+| `PATCH` | `/api/auth/privacy` | Update practice statistics visibility | `{ "practiceStatsVisibility": "private" \| "public" }` |
+| `POST` | `/api/performances` | Record a completed typing performance with anti-tamper validation | `{ "mode": "practice" \| "ranked", "language": "...", "difficulty": "...", "timerSeconds": 60, "wpm": 75, "accuracy": 98.5, "correctChars": 375, "incorrectChars": 6, "elapsedSeconds": 60, "snippetId": "..." }` |
+| `GET` | `/api/performances` | Retrieve user performance history with mode filtering, query filters, and sorting (`?mode=practice\|ranked\|all&language=...&timerSeconds=...&sort=newest\|wpm_desc\|wpm_asc&page=...&limit=...`) | None |
+| `GET` | `/api/performances/graph` | Retrieve chronological WPM progression dataset for mode (`?mode=practice\|ranked&language=...&timerSeconds=...`) | None |
+| `GET` | `/api/performances/summary` | Retrieve aggregated dashboard statistics by mode (`?mode=practice\|ranked`) | None |
+| `GET` | `/api/performances/badges` | Retrieve server-evaluated ranked milestone badges and streak progress | None |
 
 ---
 
@@ -252,3 +255,4 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 - [x] **Milestone 6 (M6)**: Performance Sorting, server-side validated WPM sorting (`newest`, `wpm_desc`, `wpm_asc`) with deterministic secondary tie-breaking, pagination ordering preservation, and interactive Sort By controls in Performance History.
 - [x] **Milestone 7 (M7)**: WPM Progression Graph, responsive SVG visualization of typing speed improvement across sequential attempts, chronological ordering (`createdAt ASC`), dynamic numeric Y-axis bounds/ticks, interactive hover tooltips, filter integration, single/multi-point handling, and 500-attempt safety capping with explicit notice.
 - [x] **Milestone 8 (M8)**: Dashboard & Final Polish, comprehensive authenticated home dashboard with key summary metrics, deterministic Personal Best tie-breaking, language mastery breakdown with averageWpm, recent activity feed, unified 3-tab navigation (Dashboard, Practice, History), responsive styling refinements, and polished user flows.
+- [x] **Milestone 9 (M9)**: Ranked Typing vs Unranked Practice, 14 server-evaluated milestone badges (speed thresholds, 5-attempt streaks, volume, and consistency), anti-tamper metric verification, practice privacy controls (`private` default vs `public`), dedicated shareable public profile view (`#/user/:username`), and standalone legacy record migration script.

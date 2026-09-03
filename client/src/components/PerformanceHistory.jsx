@@ -10,7 +10,8 @@ export const SORT_MODES = [
   { id: 'wpm_asc', label: 'WPM: Low \u2192 High' },
 ];
 
-export function PerformanceHistory({ onNavigateToPractice }) {
+export function PerformanceHistory({ initialMode = 'practice', onNavigateToPractice }) {
+  const [selectedMode, setSelectedMode] = useState(initialMode); // 'practice' | 'ranked'
   const [selectedLanguage, setSelectedLanguage] = useState('all');
   const [selectedTimer, setSelectedTimer] = useState('all');
   const [selectedSort, setSelectedSort] = useState('newest');
@@ -20,7 +21,7 @@ export function PerformanceHistory({ onNavigateToPractice }) {
   const [performances, setPerformances] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
 
-  // Graph data states (always complete chronological series for the active filters)
+  // Graph data states (always complete chronological series for the active filters and mode)
   const [graphData, setGraphData] = useState([]);
   const [graphLoading, setGraphLoading] = useState(true);
   const [graphTotal, setGraphTotal] = useState(0);
@@ -32,6 +33,7 @@ export function PerformanceHistory({ onNavigateToPractice }) {
     setError(null);
     try {
       const res = await api.getPerformances({
+        mode: selectedMode,
         language: selectedLanguage,
         timerSeconds: selectedTimer,
         sort: selectedSort,
@@ -49,13 +51,14 @@ export function PerformanceHistory({ onNavigateToPractice }) {
     } finally {
       setLoading(false);
     }
-  }, [selectedLanguage, selectedTimer, selectedSort, page]);
+  }, [selectedMode, selectedLanguage, selectedTimer, selectedSort, page]);
 
   // Fetch chronological graph series (independent of table sort and pagination)
   const fetchGraph = useCallback(async () => {
     setGraphLoading(true);
     try {
       const res = await api.getPerformanceGraph({
+        mode: selectedMode,
         language: selectedLanguage,
         timerSeconds: selectedTimer,
       });
@@ -70,7 +73,7 @@ export function PerformanceHistory({ onNavigateToPractice }) {
     } finally {
       setGraphLoading(false);
     }
-  }, [selectedLanguage, selectedTimer]);
+  }, [selectedMode, selectedLanguage, selectedTimer]);
 
   useEffect(() => {
     fetchHistory();
@@ -80,19 +83,24 @@ export function PerformanceHistory({ onNavigateToPractice }) {
     fetchGraph();
   }, [fetchGraph]);
 
+  const handleModeChange = (mode) => {
+    setSelectedMode(mode);
+    setPage(1);
+  };
+
   const handleLanguageChange = (langId) => {
     setSelectedLanguage(langId);
-    setPage(1); // Reset to first page on filter change
+    setPage(1);
   };
 
   const handleTimerChange = (timerSec) => {
     setSelectedTimer(timerSec);
-    setPage(1); // Reset to first page on filter change
+    setPage(1);
   };
 
   const handleSortChange = (sortId) => {
     setSelectedSort(sortId);
-    setPage(1); // Reset to first page on sort change
+    setPage(1);
   };
 
   const handleRefreshAll = () => {
@@ -126,21 +134,48 @@ export function PerformanceHistory({ onNavigateToPractice }) {
     return found ? found.label : `${seconds}s`;
   };
 
+  const isRanked = selectedMode === 'ranked';
+
   return (
-    <div className="history-container">
+    <div className={`history-container ${isRanked ? 'history-ranked-theme' : ''}`}>
       {/* History Header & Practice CTA */}
       <div className="history-header">
         <div>
           <h2 className="history-title">Performance History</h2>
-          <p className="history-subtitle">Track your past typing speed and accuracy metrics over time.</p>
+          <p className="history-subtitle">
+            {isRanked
+              ? 'Review verified competitive ranked attempts and WPM progression.'
+              : 'Review casual practice sessions and training history.'}
+          </p>
         </div>
-        <button type="button" className="action-btn primary-btn compact" onClick={onNavigateToPractice}>
-          &gt;_ Take a Test
+        <button type="button" className={`action-btn ${isRanked ? 'start-ranked-btn' : 'primary-btn'} compact`} onClick={onNavigateToPractice}>
+          {isRanked ? '🏆 Take Ranked Test' : '>_ Take Practice Test'}
         </button>
       </div>
 
       {/* Filter Bar */}
       <div className="history-filter-card">
+        {/* Mode Selector */}
+        <div className="filter-group">
+          <label className="filter-label">Mode</label>
+          <div className="filter-pill-row">
+            <button
+              type="button"
+              className={`filter-pill practice ${selectedMode === 'practice' ? 'active' : ''}`}
+              onClick={() => handleModeChange('practice')}
+            >
+              ⌨️ Practice History
+            </button>
+            <button
+              type="button"
+              className={`filter-pill ranked ${selectedMode === 'ranked' ? 'active' : ''}`}
+              onClick={() => handleModeChange('ranked')}
+            >
+              🏆 Ranked History
+            </button>
+          </div>
+        </div>
+
         {/* Sort Order Control */}
         <div className="filter-group">
           <label className="filter-label">Sort By</label>
@@ -218,7 +253,7 @@ export function PerformanceHistory({ onNavigateToPractice }) {
       {/* Summary / Refresh Bar */}
       <div className="history-summary-bar">
         <span className="summary-text">
-          {loading ? 'Refreshing records...' : `Showing ${performances.length} of ${pagination.total} attempt${pagination.total === 1 ? '' : 's'}`}
+          {loading ? 'Refreshing records...' : `Showing ${performances.length} of ${pagination.total} ${isRanked ? 'ranked' : 'practice'} attempt${pagination.total === 1 ? '' : 's'}`}
         </span>
         <button type="button" className="refresh-btn" onClick={handleRefreshAll} title="Refresh history and graph">
           &#x21BB; Refresh
@@ -233,7 +268,7 @@ export function PerformanceHistory({ onNavigateToPractice }) {
             <div className="skeleton-line row"></div>
             <div className="skeleton-line row"></div>
           </div>
-          <p>Loading your performance records...</p>
+          <p>Loading your {isRanked ? 'ranked' : 'practice'} records...</p>
         </div>
       )}
 
@@ -251,15 +286,19 @@ export function PerformanceHistory({ onNavigateToPractice }) {
       {/* Empty State */}
       {!loading && !error && performances.length === 0 && (
         <div className="history-state-card empty">
-          <div className="empty-symbol">&gt;_</div>
-          <h3>No Performance Records Found</h3>
+          <div className="empty-symbol">{isRanked ? '🏆' : '>_'}</div>
+          <h3>No {isRanked ? 'Ranked' : 'Practice'} Records Found</h3>
           <p>
             {selectedLanguage !== 'all' || selectedTimer !== 'all'
-              ? 'No tests match your selected language and duration filters.'
-              : 'You have not completed any typing tests yet. Complete a test to start tracking your performance!'}
+              ? `No ${isRanked ? 'ranked' : 'practice'} tests match your selected filters.`
+              : `You have not completed any ${isRanked ? 'ranked' : 'practice'} tests yet.`}
           </p>
-          <button type="button" className="action-btn primary-btn" onClick={onNavigateToPractice}>
-            Start Your First Test
+          <button
+            type="button"
+            className={`action-btn ${isRanked ? 'start-ranked-btn' : 'primary-btn'}`}
+            onClick={onNavigateToPractice}
+          >
+            {isRanked ? 'Start a Ranked Test' : 'Start Your First Test'}
           </button>
         </div>
       )}
@@ -273,11 +312,15 @@ export function PerformanceHistory({ onNavigateToPractice }) {
             const langName = getLanguageName(perf.language);
             const timerLabel = getTimerLabel(perf.timerSeconds);
             const formattedElapsed = formatTime(perf.elapsedSeconds);
+            const isPerfRanked = perf.mode === 'ranked';
 
             return (
-              <div key={perf.id || perf._id} className="history-card">
+              <div key={perf.id || perf._id} className={`history-card ${isPerfRanked ? 'ranked-card' : ''}`}>
                 <div className="card-top">
                   <div className="badge-group">
+                    <span className={`mode-badge-tag ${isPerfRanked ? 'ranked' : 'practice'}`}>
+                      {isPerfRanked ? '🏆 Ranked' : '⌨️ Practice'}
+                    </span>
                     <span className="lang-tag">{langName}</span>
                     <span className={`diff-tag ${diffClass}`}>{diffDisplay}</span>
                     <span className="timer-badge">&#x23F1; {timerLabel}</span>
@@ -287,7 +330,7 @@ export function PerformanceHistory({ onNavigateToPractice }) {
 
                 <div className="card-stats-grid">
                   <div className="stat-block wpm-block">
-                    <span className="stat-num">{perf.wpm}</span>
+                    <span className={`stat-num ${isPerfRanked ? 'text-amber' : 'text-cyan'}`}>{perf.wpm}</span>
                     <span className="stat-lbl">WPM</span>
                   </div>
                   <div className="stat-block accuracy-block">

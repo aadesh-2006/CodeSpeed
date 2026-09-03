@@ -6,6 +6,7 @@ import TestSetup from './components/TestSetup';
 import TypingTest from './components/TypingTest';
 import TestResult from './components/TestResult';
 import PerformanceHistory from './components/PerformanceHistory';
+import PublicProfile from './components/PublicProfile';
 import { SUPPORTED_LANGUAGES, getRandomSnippet } from './data/snippets';
 import './App.css';
 
@@ -16,9 +17,14 @@ function App() {
 
   // Top-level authenticated view: 'dashboard' | 'test' | 'history'
   const [currentView, setCurrentView] = useState('dashboard');
+  const [historyInitialMode, setHistoryInitialMode] = useState('practice');
 
-  // Typing engine states: 'IDLE' | 'RUNNING' | 'FINISHED'
-  const [testState, setTestState] = useState('IDLE');
+  // Shareable Public Profile view state (derived from #/user/:username)
+  const [publicProfileUsername, setPublicProfileUsername] = useState(null);
+
+  // Typing engine & mode states
+  const [selectedMode, setSelectedMode] = useState('practice'); // 'practice' | 'ranked'
+  const [testState, setTestState] = useState('IDLE'); // 'IDLE' | 'RUNNING' | 'FINISHED'
   const [selectedLanguage, setSelectedLanguage] = useState('javascript');
   const [selectedDifficulty, setSelectedDifficulty] = useState('medium');
   const [selectedDuration, setSelectedDuration] = useState(60);
@@ -29,6 +35,23 @@ function App() {
   const attemptSavedRef = useRef(false);
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+  // Listen to URL hash routing for shareable public profile: #/user/:username
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash || '';
+      const match = hash.match(/^#\/user\/([^/?#]+)/);
+      if (match && match[1]) {
+        setPublicProfileUsername(decodeURIComponent(match[1]));
+      } else {
+        setPublicProfileUsername(null);
+      }
+    };
+
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // Check health check status from backend
   useEffect(() => {
@@ -62,8 +85,8 @@ function App() {
     api
       .getMe()
       .then((res) => {
-        if (res && res.data && res.data.user) {
-          setUser(res.data.user);
+        if (res && res.user) {
+          setUser(res.user);
         } else {
           clearToken();
         }
@@ -92,7 +115,7 @@ function App() {
     setCurrentView('dashboard');
   };
 
-  // Start a new test with selected language, difficulty, and duration
+  // Start a new test with selected mode, language, difficulty, and duration
   const handleStartTest = () => {
     const snippet = getRandomSnippet(selectedLanguage, selectedDifficulty, currentSnippet?.id);
     setCurrentSnippet(snippet);
@@ -113,6 +136,7 @@ function App() {
       setSaveStatus('saving');
 
       const performancePayload = {
+        mode: selectedMode,
         language: selectedLanguage,
         difficulty: selectedDifficulty,
         timerSeconds: selectedDuration,
@@ -160,13 +184,18 @@ function App() {
     attemptSavedRef.current = false;
   };
 
+  const handleClosePublicProfile = () => {
+    window.location.hash = '';
+    setPublicProfileUsername(null);
+  };
+
   const activeLanguageObj = SUPPORTED_LANGUAGES.find((l) => l.id === selectedLanguage);
   const activeLanguageName = activeLanguageObj ? activeLanguageObj.name : selectedLanguage;
 
   return (
     <div className="app-container">
       <header className="header">
-        <div className="badge">CodeSpeed &bull; Polished Final Release</div>
+        <div className="badge">CodeSpeed &bull; Ranked &amp; Badges (M9 Release)</div>
       </header>
 
       <main className="hero">
@@ -174,7 +203,13 @@ function App() {
         <h1 className="title">CodeSpeed</h1>
         <p className="tagline">Type code. Track speed. Improve.</p>
 
-        {authLoading ? (
+        {/* Shareable Public Profile Screen (Active when URL hash has #/user/:username) */}
+        {publicProfileUsername ? (
+          <PublicProfile
+            username={publicProfileUsername}
+            onNavigateHome={handleClosePublicProfile}
+          />
+        ) : authLoading ? (
           <div className="loading-card">
             <p>Loading user session...</p>
           </div>
@@ -202,7 +237,7 @@ function App() {
                     className={`view-toggle-btn ${currentView === 'test' ? 'active' : ''}`}
                     onClick={() => setCurrentView('test')}
                   >
-                    Practice
+                    Practice / Ranked
                   </button>
                   <button
                     type="button"
@@ -223,14 +258,31 @@ function App() {
             {currentView === 'dashboard' && (
               <Dashboard
                 user={user}
-                onNavigateToPractice={() => setCurrentView('test')}
-                onNavigateToHistory={() => setCurrentView('history')}
+                onNavigateToPractice={() => {
+                  setSelectedMode('practice');
+                  setCurrentView('test');
+                }}
+                onNavigateToRanked={() => {
+                  setSelectedMode('ranked');
+                  setCurrentView('test');
+                }}
+                onNavigateToHistory={(mode) => {
+                  setHistoryInitialMode(mode);
+                  setCurrentView('history');
+                }}
+                onViewPublicProfile={(un) => {
+                  window.location.hash = `/user/${un}`;
+                }}
+                onUserUpdate={(updatedUser) => setUser(updatedUser)}
               />
             )}
 
             {/* View: Performance History & Graph */}
             {currentView === 'history' && (
-              <PerformanceHistory onNavigateToPractice={() => setCurrentView('test')} />
+              <PerformanceHistory
+                initialMode={historyInitialMode}
+                onNavigateToPractice={() => setCurrentView('test')}
+              />
             )}
 
             {/* View: Typing Practice & Test */}
@@ -238,6 +290,8 @@ function App() {
               <>
                 {testState === 'IDLE' && (
                   <TestSetup
+                    selectedMode={selectedMode}
+                    setSelectedMode={setSelectedMode}
                     selectedLanguage={selectedLanguage}
                     setSelectedLanguage={setSelectedLanguage}
                     selectedDifficulty={selectedDifficulty}
@@ -261,6 +315,7 @@ function App() {
 
                 {testState === 'FINISHED' && testResults && (
                   <TestResult
+                    mode={selectedMode}
                     results={testResults}
                     saveStatus={saveStatus}
                     onTryAgain={handleTryAgain}
@@ -285,7 +340,7 @@ function App() {
             </span>
           </div>
           <p className="milestone-note">
-            Milestone 8 Final Release active. Practice coding typing speed, monitor personal bests and language stats on the dashboard, and analyze progression over time.
+            Milestone 9 Active. Casual practice and competitive ranked typing with verified anti-tamper metrics, 14 milestone badges, privacy controls, and public profiles.
           </p>
         </div>
       </main>

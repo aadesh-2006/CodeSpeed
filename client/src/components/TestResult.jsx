@@ -1,6 +1,14 @@
 import React from 'react';
 
-export function TestResult({ results, saveStatus, onTryAgain, onChangeSettings, onViewHistory, onViewDashboard }) {
+export function TestResult({
+  mode = 'practice',
+  results,
+  saveStatus,
+  onTryAgain,
+  onChangeSettings,
+  onViewHistory,
+  onViewDashboard,
+}) {
   const {
     wpm = 0,
     accuracy = 0,
@@ -12,13 +20,16 @@ export function TestResult({ results, saveStatus, onTryAgain, onChangeSettings, 
     difficulty = '',
   } = results || {};
 
+  const isRanked = mode === 'ranked';
   const displayDiff = difficulty ? difficulty.charAt(0).toUpperCase() + difficulty.slice(1) : '';
 
   return (
-    <div className="test-result-card">
+    <div className={`test-result-card ${isRanked ? 'ranked-result-card' : ''}`}>
       <div className="result-header">
         <div className="result-badges-row">
-          <span className="result-badge">Test Complete</span>
+          <span className={`result-badge ${isRanked ? 'ranked-badge-pill' : 'practice-badge-pill'}`}>
+            {isRanked ? '🏆 Ranked Test Complete' : '⌨️ Practice Test Complete'}
+          </span>
           {saveStatus === 'saving' && (
             <span className="save-badge saving">Saving performance...</span>
           )}
@@ -38,7 +49,7 @@ export function TestResult({ results, saveStatus, onTryAgain, onChangeSettings, 
       </div>
 
       <div className="result-hero-stats">
-        <div className="hero-stat-box primary">
+        <div className={`hero-stat-box ${isRanked ? 'ranked-hero' : 'primary'}`}>
           <div className="stat-value">{wpm}</div>
           <div className="stat-label">Words Per Minute</div>
         </div>
@@ -47,6 +58,12 @@ export function TestResult({ results, saveStatus, onTryAgain, onChangeSettings, 
           <div className="stat-label">Accuracy</div>
         </div>
       </div>
+
+      {isRanked && (
+        <div className="ranked-congrats-banner">
+          <span>⚡ Ranked test recorded! Check your Dashboard for updated ranked stats &amp; badges.</span>
+        </div>
+      )}
 
       <div className="result-details-grid">
         <div className="detail-item">
@@ -68,7 +85,7 @@ export function TestResult({ results, saveStatus, onTryAgain, onChangeSettings, 
       </div>
 
       <div className="result-actions">
-        <button type="button" className="action-btn primary-btn" onClick={onTryAgain}>
+        <button type="button" className={`action-btn ${isRanked ? 'start-ranked-btn' : 'primary-btn'}`} onClick={onTryAgain}>
           Try Again
         </button>
         <button type="button" className="action-btn secondary-btn" onClick={onChangeSettings}>

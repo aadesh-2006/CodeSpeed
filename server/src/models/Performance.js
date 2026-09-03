@@ -15,12 +15,26 @@ export const DIFFICULTY_LEVELS = ['easy', 'medium', 'hard'];
 
 export const VALID_TIMERS = [30, 60, 120, 180, 240, 300, 600];
 
+export const PERFORMANCE_MODES = ['practice', 'ranked'];
+
 const performanceSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'User ID is required'],
+      index: true,
+    },
+    mode: {
+      type: String,
+      required: [true, 'Performance mode is required'],
+      enum: {
+        values: PERFORMANCE_MODES,
+        message: '{VALUE} is not a valid performance mode',
+      },
+      default: 'practice',
+      lowercase: true,
+      trim: true,
       index: true,
     },
     language: {
@@ -99,6 +113,10 @@ const performanceSchema = new mongoose.Schema(
     },
   }
 );
+
+// Compound indexes for mode-filtered queries
+performanceSchema.index({ userId: 1, mode: 1, createdAt: -1 });
+performanceSchema.index({ userId: 1, mode: 1, createdAt: 1 });
 
 export const Performance = mongoose.model('Performance', performanceSchema);
 export default Performance;

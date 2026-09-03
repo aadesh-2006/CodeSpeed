@@ -7,13 +7,14 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import app from '../src/index.js';
 import User from '../src/models/User.js';
+import Performance from '../src/models/Performance.js';
 
 // Configure test environment
 const JWT_TEST_SECRET = 'codespeed_test_secret_key_12345';
 process.env.JWT_SECRET = JWT_TEST_SECRET;
 process.env.NODE_ENV = 'test';
 
-describe('Authentication API Tests', () => {
+describe('Authentication & User Profile API Tests', () => {
   let mongoServer;
   let httpServer;
   let baseUrl;
@@ -23,7 +24,6 @@ describe('Authentication API Tests', () => {
     let mongoUri = process.env.MONGODB_URI;
     if (!mongoUri) {
       fs.mkdirSync(testDbPath, { recursive: true });
-      // Start MongoMemoryServer for isolated integration testing
       mongoServer = await MongoMemoryServer.create({
         binary: {
           version: '4.4.29',
@@ -36,7 +36,6 @@ describe('Authentication API Tests', () => {
     }
     await mongoose.connect(mongoUri);
 
-    // Start HTTP server on random available port
     await new Promise((resolve) => {
       httpServer = http.createServer(app);
       httpServer.listen(0, '127.0.0.1', () => {
@@ -60,7 +59,7 @@ describe('Authentication API Tests', () => {
     try {
       fs.rmSync(testDbPath, { recursive: true, force: true });
     } catch {
-      // Ignored if file locked
+      // Ignored
     }
   });
 
@@ -93,12 +92,11 @@ describe('Authentication API Tests', () => {
       assert.ok(data.user);
       assert.equal(data.user.username, 'testpilot');
       assert.equal(data.user.email, 'pilot@example.com');
+      assert.equal(data.user.practiceStatsVisibility, 'private');
       assert.ok(data.user.id);
-      // Password or passwordHash must NEVER be returned
       assert.equal(data.user.password, undefined);
       assert.equal(data.user.passwordHash, undefined);
 
-      // Verify user exists in MongoDB and stores passwordHash, not plaintext
       const dbUser = await User.findOne({ email: 'pilot@example.com' });
       assert.ok(dbUser);
       assert.ok(dbUser.passwordHash);
@@ -140,7 +138,6 @@ describe('Authentication API Tests', () => {
     });
 
     test('rejects invalid input (missing fields, short username, short password, invalid email)', async () => {
-      // Missing password
       const res1 = await fetch(`${baseUrl}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,7 +145,6 @@ describe('Authentication API Tests', () => {
       });
       assert.equal(res1.status, 400);
 
-      // Invalid email format
       const res2 = await fetch(`${baseUrl}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -156,7 +152,6 @@ describe('Authentication API Tests', () => {
       });
       assert.equal(res2.status, 400);
 
-      // Password too short (< 6 chars)
       const res3 = await fetch(`${baseUrl}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -164,7 +159,6 @@ describe('Authentication API Tests', () => {
       });
       assert.equal(res3.status, 400);
 
-      // Username too short (< 3 chars)
       const res4 = await fetch(`${baseUrl}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -192,6 +186,7 @@ describe('Authentication API Tests', () => {
       assert.ok(data.user);
       assert.equal(data.user.username, 'testpilot');
       assert.equal(data.user.email, 'pilot@example.com');
+      assert.equal(data.user.practiceStatsVisibility, 'private');
       assert.equal(data.user.passwordHash, undefined);
     });
 
@@ -283,6 +278,137 @@ describe('Authentication API Tests', () => {
       assert.equal(res.status, 401);
       const data = await res.json();
       assert.equal(data.status, 'error');
+    });
+  });
+
+  describe('PATCH /api/auth/privacy & GET /api/users/:username/profile', () => {
+    let userToken;
+    let userId;
+
+    before(async () => {
+      // Create user for privacy & profile tests
+      const signupRes = await fetch(`${baseUrl}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'publicracer',
+          email: 'racer@example.com',
+          password: 'Password123!',
+        }),
+      });
+      const signupData = await signupRes.json();
+      userToken = signupData.token;
+      userId = signupData.user.id;
+
+      // Seed 1 ranked performance (60 WPM)
+      await Performance.create({
+        userId,
+        mode: 'ranked',
+        language: 'javascript',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 60,
+        accuracy: 98,
+        correctChars: 300,
+        incorrectChars: 6,
+        elapsedSeconds: 60,
+        snippetId: 'js-med-01',
+      });
+
+      // Seed 1 practice performance (40 WPM)
+      await Performance.create({
+        userId,
+        mode: 'practice',
+        language: 'python',
+        difficulty: 'easy',
+        timerSeconds: 60,
+        wpm: 40,
+        accuracy: 95,
+        correctChars: 200,
+        incorrectChars: 10,
+        elapsedSeconds: 60,
+        snippetId: 'py-easy-01',
+      });
+    });
+
+    test('unauthenticated PATCH /api/auth/privacy returns 401', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/privacy`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ practiceStatsVisibility: 'public' }),
+      });
+      assert.equal(res.status, 401);
+    });
+
+    test('PATCH /api/auth/privacy rejects invalid privacy setting with 400', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/privacy`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${userToken}`,
+        },
+        body: JSON.stringify({ practiceStatsVisibility: 'invalid_mode' }),
+      });
+      assert.equal(res.status, 400);
+    });
+
+    test('GET /api/users/:username/profile returns 404 for nonexistent username', async () => {
+      const res = await fetch(`${baseUrl}/api/users/nonexistentuser_9999/profile`);
+      assert.equal(res.status, 404);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+    });
+
+    test('GET /api/users/:username/profile exposes ranked data and omits private practice data when privacy is private', async () => {
+      const res = await fetch(`${baseUrl}/api/users/publicracer/profile`);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.status, 'success');
+      assert.equal(data.data.username, 'publicracer');
+      assert.ok(data.data.memberSince);
+
+      // Security check: private fields MUST NOT be exposed
+      assert.equal(data.data.email, undefined);
+      assert.equal(data.data.passwordHash, undefined);
+      assert.equal(data.data.practiceStatsVisibility, undefined);
+      assert.equal(data.data.practicePrivacy, undefined);
+
+      // Ranked data is ALWAYS exposed
+      assert.ok(data.data.ranked);
+      assert.equal(data.data.ranked.summary.totalTests, 1);
+      assert.equal(data.data.ranked.summary.personalBest.wpm, 60);
+      assert.ok(data.data.ranked.badges);
+      assert.ok(data.data.ranked.graphData);
+      assert.equal(data.data.ranked.graphData.length, 1);
+
+      // Practice data MUST be null when private
+      assert.equal(data.data.practice, null);
+    });
+
+    test('PATCH /api/auth/privacy updates visibility to public and public profile includes practice data', async () => {
+      // 1. Update privacy to public
+      const patchRes = await fetch(`${baseUrl}/api/auth/privacy`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${userToken}`,
+        },
+        body: JSON.stringify({ practiceStatsVisibility: 'public' }),
+      });
+      assert.equal(patchRes.status, 200);
+      const patchData = await patchRes.json();
+      assert.equal(patchData.data.user.practiceStatsVisibility, 'public');
+
+      // 2. Fetch public profile again
+      const profileRes = await fetch(`${baseUrl}/api/users/publicracer/profile`);
+      assert.equal(profileRes.status, 200);
+      const profileData = await profileRes.json();
+
+      // Practice data is NOW exposed
+      assert.ok(profileData.data.practice);
+      assert.equal(profileData.data.practice.summary.totalTests, 1);
+      assert.equal(profileData.data.practice.summary.personalBest.wpm, 40);
+      assert.equal(profileData.data.practice.graphData.length, 1);
     });
   });
 });

@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+export const PRIVACY_LEVELS = ['private', 'public'];
+
 const userSchema = new mongoose.Schema(
   {
     username: {
@@ -23,6 +25,16 @@ const userSchema = new mongoose.Schema(
     passwordHash: {
       type: String,
       required: [true, 'Password hash is required'],
+    },
+    practiceStatsVisibility: {
+      type: String,
+      enum: {
+        values: PRIVACY_LEVELS,
+        message: '{VALUE} is not a valid privacy level',
+      },
+      default: 'private',
+      lowercase: true,
+      trim: true,
     },
     createdAt: {
       type: Date,

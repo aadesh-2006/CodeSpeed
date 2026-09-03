@@ -2,7 +2,9 @@ import Performance, {
   SUPPORTED_LANGUAGES,
   DIFFICULTY_LEVELS,
   VALID_TIMERS,
+  PERFORMANCE_MODES,
 } from '../models/Performance.js';
+import { evaluateBadges } from '../utils/badgeRules.js';
 
 export const SORT_OPTIONS = {
   newest: { createdAt: -1 },
@@ -13,7 +15,7 @@ export const SORT_OPTIONS = {
 /**
  * Controller to record a completed typing performance.
  * Derives user identity exclusively from verified JWT (req.user.id).
- * Independently validates all fields before persistence.
+ * Independently validates all fields and enforces anti-tamper metric consistency.
  */
 export const createPerformance = async (req, res) => {
   try {
@@ -26,6 +28,7 @@ export const createPerformance = async (req, res) => {
     }
 
     const {
+      mode = 'practice',
       language,
       difficulty,
       timerSeconds,
@@ -37,7 +40,16 @@ export const createPerformance = async (req, res) => {
       snippetId,
     } = req.body || {};
 
-    // 1. Validate language
+    // 1. Validate mode
+    if (typeof mode !== 'string' || !PERFORMANCE_MODES.includes(mode.toLowerCase().trim())) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Invalid performance mode: '${mode}'. Must be one of: ${PERFORMANCE_MODES.join(', ')}.`,
+      });
+    }
+    const normMode = mode.toLowerCase().trim();
+
+    // 2. Validate language
     if (typeof language !== 'string' || !language.trim()) {
       return res.status(400).json({
         status: 'error',
@@ -52,7 +64,7 @@ export const createPerformance = async (req, res) => {
       });
     }
 
-    // 2. Validate difficulty
+    // 3. Validate difficulty
     if (typeof difficulty !== 'string' || !difficulty.trim()) {
       return res.status(400).json({
         status: 'error',
@@ -67,7 +79,7 @@ export const createPerformance = async (req, res) => {
       });
     }
 
-    // 3. Validate timerSeconds
+    // 4. Validate timerSeconds
     if (typeof timerSeconds !== 'number' || !Number.isInteger(timerSeconds)) {
       return res.status(400).json({
         status: 'error',
@@ -81,7 +93,7 @@ export const createPerformance = async (req, res) => {
       });
     }
 
-    // 4. Validate WPM
+    // 5. Validate WPM
     if (typeof wpm !== 'number' || !Number.isFinite(wpm) || wpm < 0) {
       return res.status(400).json({
         status: 'error',
@@ -89,7 +101,15 @@ export const createPerformance = async (req, res) => {
       });
     }
 
-    // 5. Validate accuracy
+    // Anti-tamper: realistic speed ceiling (350 WPM maximum human limit)
+    if (wpm > 350) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'WPM exceeds realistic performance ceiling.',
+      });
+    }
+
+    // 6. Validate accuracy
     if (typeof accuracy !== 'number' || !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 100) {
       return res.status(400).json({
         status: 'error',
@@ -97,15 +117,13 @@ export const createPerformance = async (req, res) => {
       });
     }
 
-    // 6. Validate correctChars
+    // 7. Validate correctChars & incorrectChars
     if (typeof correctChars !== 'number' || !Number.isInteger(correctChars) || correctChars < 0) {
       return res.status(400).json({
         status: 'error',
         message: 'Correct characters must be a non-negative integer.',
       });
     }
-
-    // 7. Validate incorrectChars
     if (typeof incorrectChars !== 'number' || !Number.isInteger(incorrectChars) || incorrectChars < 0) {
       return res.status(400).json({
         status: 'error',
@@ -113,12 +131,40 @@ export const createPerformance = async (req, res) => {
       });
     }
 
-    // 8. Validate elapsedSeconds (must be integer >= 0)
+    // 8. Validate elapsedSeconds
     if (typeof elapsedSeconds !== 'number' || !Number.isInteger(elapsedSeconds) || elapsedSeconds < 0) {
       return res.status(400).json({
         status: 'error',
         message: 'Elapsed seconds must be a non-negative integer.',
       });
+    }
+
+    // Anti-tamper: elapsed seconds must be within allowed timer + 5s network grace
+    if (elapsedSeconds > timerSeconds + 5) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Elapsed time exceeds timer duration grace limit.',
+      });
+    }
+
+    // Anti-tamper: mathematical consistency check between characters, elapsed time, accuracy, and WPM
+    const totalChars = correctChars + incorrectChars;
+    if (totalChars > 0 && elapsedSeconds > 0) {
+      const expectedAccuracy = (correctChars / totalChars) * 100;
+      if (Math.abs(accuracy - expectedAccuracy) > 2.0) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Accuracy is mathematically inconsistent with character counts.',
+        });
+      }
+
+      const expectedWpm = (correctChars / 5) / (elapsedSeconds / 60);
+      if (Math.abs(wpm - expectedWpm) > 4.0) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'WPM is mathematically inconsistent with characters and elapsed time.',
+        });
+      }
     }
 
     // 9. Validate snippetId
@@ -132,6 +178,7 @@ export const createPerformance = async (req, res) => {
     // Create and save new Performance record
     const performance = new Performance({
       userId,
+      mode: normMode,
       language: normLang,
       difficulty: normDiff,
       timerSeconds,
@@ -163,8 +210,7 @@ export const createPerformance = async (req, res) => {
 
 /**
  * Controller to retrieve an authenticated user's performance history.
- * Supports combinable server-side filtering by language and timerSeconds,
- * WPM sorting (newest, wpm_desc, wpm_asc), and scalable pagination.
+ * Supports mode filtering ('practice', 'ranked', 'all'), language, timer, WPM sorting, and pagination.
  */
 export const getPerformances = async (req, res) => {
   try {
@@ -176,11 +222,27 @@ export const getPerformances = async (req, res) => {
       });
     }
 
-    const { language, timerSeconds, sort, page, limit } = req.query || {};
+    const { mode = 'practice', language, timerSeconds, sort, page, limit } = req.query || {};
 
     const query = { userId };
 
-    // 1. Language filter validation
+    // 1. Mode filter validation
+    if (mode && mode.toLowerCase() !== 'all') {
+      const normMode = mode.toLowerCase().trim();
+      if (!PERFORMANCE_MODES.includes(normMode)) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Invalid mode filter: '${mode}'. Must be 'all', 'practice', or 'ranked'.`,
+        });
+      }
+      if (normMode === 'practice') {
+        query.$or = [{ mode: 'practice' }, { mode: { $exists: false } }];
+      } else {
+        query.mode = normMode;
+      }
+    }
+
+    // 2. Language filter validation
     if (language && language.toLowerCase() !== 'all') {
       const normLang = language.toLowerCase().trim();
       if (!SUPPORTED_LANGUAGES.includes(normLang)) {
@@ -192,7 +254,7 @@ export const getPerformances = async (req, res) => {
       query.language = normLang;
     }
 
-    // 2. Timer filter validation
+    // 3. Timer filter validation
     if (timerSeconds && String(timerSeconds).toLowerCase() !== 'all') {
       const parsedTimer = parseInt(timerSeconds, 10);
       if (isNaN(parsedTimer) || !VALID_TIMERS.includes(parsedTimer)) {
@@ -204,7 +266,7 @@ export const getPerformances = async (req, res) => {
       query.timerSeconds = parsedTimer;
     }
 
-    // 3. Sort configuration validation
+    // 4. Sort configuration validation
     let sortConfig = SORT_OPTIONS.newest;
     if (sort !== undefined && sort !== null && sort !== '') {
       const normSort = sort.toLowerCase().trim();
@@ -217,12 +279,12 @@ export const getPerformances = async (req, res) => {
       sortConfig = SORT_OPTIONS[normSort];
     }
 
-    // 4. Pagination setup
+    // 5. Pagination setup
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const skip = (parsedPage - 1) * parsedLimit;
 
-    // 5. Query execution: sort applied before skip & limit for correct pagination
+    // 6. Query execution
     const [performances, total] = await Promise.all([
       Performance.find(query).sort(sortConfig).skip(skip).limit(parsedLimit),
       Performance.countDocuments(query),
@@ -253,8 +315,7 @@ export const getPerformances = async (req, res) => {
 
 /**
  * Controller to retrieve complete chronological data for WPM progression graph.
- * Returns records strictly in createdAt ASC order, respecting language/timer filters,
- * with sequential 1-based attempt numbers and explicit 500-record truncation metadata.
+ * Returns records strictly in createdAt ASC order for the requested mode ('practice' vs 'ranked').
  */
 export const getPerformanceGraph = async (req, res) => {
   try {
@@ -266,10 +327,26 @@ export const getPerformanceGraph = async (req, res) => {
       });
     }
 
-    const { language, timerSeconds } = req.query || {};
+    const { mode = 'practice', language, timerSeconds } = req.query || {};
     const query = { userId };
 
-    // 1. Language filter validation
+    // 1. Mode filter validation
+    if (mode && mode.toLowerCase() !== 'all') {
+      const normMode = mode.toLowerCase().trim();
+      if (!PERFORMANCE_MODES.includes(normMode)) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Invalid mode filter: '${mode}'. Must be 'practice' or 'ranked'.`,
+        });
+      }
+      if (normMode === 'practice') {
+        query.$or = [{ mode: 'practice' }, { mode: { $exists: false } }];
+      } else {
+        query.mode = normMode;
+      }
+    }
+
+    // 2. Language filter validation
     if (language && language.toLowerCase() !== 'all') {
       const normLang = language.toLowerCase().trim();
       if (!SUPPORTED_LANGUAGES.includes(normLang)) {
@@ -281,7 +358,7 @@ export const getPerformanceGraph = async (req, res) => {
       query.language = normLang;
     }
 
-    // 2. Timer filter validation
+    // 3. Timer filter validation
     if (timerSeconds && String(timerSeconds).toLowerCase() !== 'all') {
       const parsedTimer = parseInt(timerSeconds, 10);
       if (isNaN(parsedTimer) || !VALID_TIMERS.includes(parsedTimer)) {
@@ -299,22 +376,21 @@ export const getPerformanceGraph = async (req, res) => {
 
     let records;
     if (isTruncated) {
-      // For meaningful progression visualization, retrieve the most recent 500 attempts
-      // by querying newest first then reversing to chronological order
       const latestRecords = await Performance.find(query)
-        .select('wpm accuracy language difficulty timerSeconds snippetId createdAt')
+        .select('mode wpm accuracy language difficulty timerSeconds snippetId createdAt')
         .sort({ createdAt: -1 })
         .limit(GRAPH_LIMIT);
       records = latestRecords.reverse();
     } else {
       records = await Performance.find(query)
-        .select('wpm accuracy language difficulty timerSeconds snippetId createdAt')
+        .select('mode wpm accuracy language difficulty timerSeconds snippetId createdAt')
         .sort({ createdAt: 1 });
     }
 
     const graphData = records.map((p, index) => ({
       id: p._id ? p._id.toString() : p.id,
       attemptNumber: index + 1,
+      mode: p.mode || 'practice',
       wpm: p.wpm,
       accuracy: p.accuracy,
       language: p.language,
@@ -343,10 +419,7 @@ export const getPerformanceGraph = async (req, res) => {
 };
 
 /**
- * Controller to retrieve aggregate dashboard metrics for the authenticated user.
- * Calculates total tests, total time, average WPM, average accuracy,
- * personal best (with deterministic tie-breaking: wpm DESC, accuracy DESC, createdAt DESC),
- * language breakdown with averageWpm, and 3 most recent attempts.
+ * Controller to retrieve aggregate dashboard metrics for the authenticated user by mode.
  */
 export const getPerformanceSummary = async (req, res) => {
   try {
@@ -358,12 +431,29 @@ export const getPerformanceSummary = async (req, res) => {
       });
     }
 
-    const records = await Performance.find({ userId }).sort({ createdAt: -1 });
+    const { mode = 'practice' } = req.query || {};
+    const normMode = mode.toLowerCase().trim();
+    if (!PERFORMANCE_MODES.includes(normMode)) {
+      return res.status(400).json({
+        status: 'error',
+        message: `Invalid mode: '${mode}'. Must be 'practice' or 'ranked'.`,
+      });
+    }
+
+    const query = { userId };
+    if (normMode === 'practice') {
+      query.$or = [{ mode: 'practice' }, { mode: { $exists: false } }];
+    } else {
+      query.mode = normMode;
+    }
+
+    const records = await Performance.find(query).sort({ createdAt: -1 });
 
     if (!records || records.length === 0) {
       return res.status(200).json({
         status: 'success',
         data: {
+          mode: normMode,
           totalTests: 0,
           totalTimeTypedSeconds: 0,
           averageWpm: 0,
@@ -384,10 +474,7 @@ export const getPerformanceSummary = async (req, res) => {
     const sumAccuracy = records.reduce((acc, r) => acc + (r.accuracy || 0), 0);
     const averageAccuracy = Math.round((sumAccuracy / totalTests) * 10) / 10;
 
-    // Deterministic Personal Best selection:
-    // 1. highest WPM
-    // 2. highest accuracy
-    // 3. newest createdAt
+    // Deterministic Personal Best selection (highest WPM, then highest accuracy, then newest createdAt)
     const sortedForPb = [...records].sort((a, b) => {
       if (b.wpm !== a.wpm) return b.wpm - a.wpm;
       if (b.accuracy !== a.accuracy) return b.accuracy - a.accuracy;
@@ -397,6 +484,7 @@ export const getPerformanceSummary = async (req, res) => {
     const pbRecord = sortedForPb[0];
     const personalBest = {
       id: pbRecord._id.toString(),
+      mode: pbRecord.mode || 'practice',
       wpm: pbRecord.wpm,
       accuracy: pbRecord.accuracy,
       language: pbRecord.language,
@@ -432,6 +520,7 @@ export const getPerformanceSummary = async (req, res) => {
     // Recent 3 attempts
     const recentAttempts = records.slice(0, 3).map((r) => ({
       id: r._id.toString(),
+      mode: r.mode || 'practice',
       wpm: r.wpm,
       accuracy: r.accuracy,
       language: r.language,
@@ -444,6 +533,7 @@ export const getPerformanceSummary = async (req, res) => {
     return res.status(200).json({
       status: 'success',
       data: {
+        mode: normMode,
         totalTests,
         totalTimeTypedSeconds,
         averageWpm,
@@ -458,6 +548,41 @@ export const getPerformanceSummary = async (req, res) => {
     return res.status(500).json({
       status: 'error',
       message: 'Internal server error fetching performance summary.',
+    });
+  }
+};
+
+/**
+ * Controller to evaluate and return ranked milestone badges for the authenticated user.
+ */
+export const getBadges = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required. User context missing.',
+      });
+    }
+
+    // Query all validated ranked performances in chronological order
+    const rankedRecords = await Performance.find({ userId, mode: 'ranked' }).sort({ createdAt: 1 });
+    const badges = evaluateBadges(rankedRecords);
+    const earnedCount = badges.filter((b) => b.earned).length;
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        badges,
+        earnedCount,
+        totalBadges: badges.length,
+      },
+    });
+  } catch (error) {
+    console.error('[Performance Controller] Error fetching badges:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error evaluating badges.',
     });
   }
 };

@@ -5,6 +5,7 @@ import {
   getPerformances,
   getPerformanceGraph,
   getPerformanceSummary,
+  getBadges,
 } from '../controllers/performanceController.js';
 
 const router = express.Router();
@@ -14,5 +15,6 @@ router.post('/', authenticate, createPerformance);
 router.get('/', authenticate, getPerformances);
 router.get('/graph', authenticate, getPerformanceGraph);
 router.get('/summary', authenticate, getPerformanceSummary);
+router.get('/badges', authenticate, getBadges);
 
 export default router;
