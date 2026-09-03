@@ -26,6 +26,16 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Password hash is required'],
     },
+    bio: {
+      type: String,
+      trim: true,
+      maxlength: [200, 'Bio cannot exceed 200 characters'],
+      default: '',
+    },
+    profilePhoto: {
+      type: String,
+      default: null,
+    },
     practiceStatsVisibility: {
       type: String,
       enum: {

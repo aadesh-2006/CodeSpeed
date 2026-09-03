@@ -76,6 +76,8 @@ export const api = {
   signup: (userData) => request('/api/auth/signup', { method: 'POST', body: JSON.stringify(userData) }),
   login: (credentials) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
   getMe: () => request('/api/auth/me', { method: 'GET' }),
+  updateProfile: (profilePayload) => request('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(profilePayload) }),
+  changePassword: (passwordPayload) => request('/api/auth/change-password', { method: 'POST', body: JSON.stringify(passwordPayload) }),
   updatePrivacy: (privacyPayload) => request('/api/auth/privacy', { method: 'PATCH', body: JSON.stringify(privacyPayload) }),
   getPublicProfile: (username) => request(`/api/users/${encodeURIComponent(username)}/profile`, { method: 'GET' }),
 

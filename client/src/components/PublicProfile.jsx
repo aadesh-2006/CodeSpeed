@@ -4,7 +4,7 @@ import BadgesGrid from './BadgesGrid';
 import WpmProgressionGraph from './WpmProgressionGraph';
 import { formatTime } from '../utils/typingMetrics';
 
-export function PublicProfile({ username, onNavigateHome }) {
+export function PublicProfile({ username, onNavigateHome, onNavigateSettings }) {
   const [profile, setProfile] = useState(null);
   const [profileMode, setProfileMode] = useState('ranked'); // 'ranked' | 'practice' (defaults to ranked)
   const [loading, setLoading] = useState(true);
@@ -50,9 +50,16 @@ export function PublicProfile({ username, onNavigateHome }) {
     <div className={`profile-view ${isRanked ? 'ranked-theme' : 'practice-theme'}`}>
       {/* Top Bar Navigation */}
       <div className="view-header">
-        <button type="button" className="btn btn-secondary btn-sm" onClick={onNavigateHome}>
-          &larr; Back to App
-        </button>
+        <div className="view-header-left">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onNavigateHome}>
+            &larr; Back to App
+          </button>
+          {profile?.isOwner && onNavigateSettings && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onNavigateSettings}>
+              Settings
+            </button>
+          )}
+        </div>
         <button type="button" className="btn btn-icon btn-sm" onClick={fetchProfile} title="Refresh profile">
           &#x21BB;
         </button>
@@ -83,13 +90,21 @@ export function PublicProfile({ username, onNavigateHome }) {
           {/* User Header Panel */}
           <div className="panel profile-header-panel">
             <div className="profile-avatar">
-              {(profile.username || 'U').charAt(0).toUpperCase()}
+              {profile.profilePhoto ? (
+                <img src={profile.profilePhoto} alt={`@${profile.username}`} className="profile-avatar-img" />
+              ) : (
+                (profile.username || 'U').charAt(0).toUpperCase()
+              )}
             </div>
             <div className="profile-user-info">
               <div className="profile-username-row">
                 <h1 className="profile-username">@{profile.username}</h1>
                 <span className="badge-public">Public Profile</span>
+                {profile.isOwner && <span className="badge-owner">You</span>}
               </div>
+              {profile.bio ? (
+                <p className="profile-bio">{profile.bio}</p>
+              ) : null}
               <p className="profile-joined">
                 Member since {formatTimestamp(profile.memberSince)}
               </p>

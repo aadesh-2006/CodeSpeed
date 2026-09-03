@@ -531,4 +531,298 @@ describe('Authentication & User Profile API Tests', () => {
       assert.equal(profileData.data.practice.graphData.length, 1);
     });
   });
+
+  describe('PATCH /api/auth/profile & Profile Management', () => {
+    let testUserToken;
+    let testUserId;
+    const dummyAvatar = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    before(async () => {
+      const signupRes = await fetch(`${baseUrl}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'settingspilot',
+          email: 'settings@example.com',
+          password: 'Password123!',
+        }),
+      });
+      const data = await signupRes.json();
+      testUserToken = data.token;
+      testUserId = data.user.id;
+
+      // Seed a ranked performance to verify it remains linked after username change
+      await Performance.create({
+        userId: testUserId,
+        mode: 'ranked',
+        language: 'javascript',
+        difficulty: 'hard',
+        timerSeconds: 60,
+        wpm: 92,
+        accuracy: 99,
+        correctChars: 460,
+        incorrectChars: 2,
+        elapsedSeconds: 60,
+        snippetId: 'js-hard-01',
+      });
+    });
+
+    test('unauthenticated PATCH /api/auth/profile returns 401', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bio: 'Hello world' }),
+      });
+      assert.equal(res.status, 401);
+    });
+
+    test('valid update to bio, profilePhoto, and practiceStatsVisibility succeeds', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${testUserToken}`,
+        },
+        body: JSON.stringify({
+          bio: 'Fullstack developer and typing speed enthusiast.',
+          profilePhoto: dummyAvatar,
+          practiceStatsVisibility: 'public',
+        }),
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.status, 'success');
+      assert.equal(data.data.user.bio, 'Fullstack developer and typing speed enthusiast.');
+      assert.equal(data.data.user.profilePhoto, dummyAvatar);
+      assert.equal(data.data.user.practiceStatsVisibility, 'public');
+    });
+
+    test('rejects bio longer than 200 characters with 400', async () => {
+      const longBio = 'A'.repeat(201);
+      const res = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${testUserToken}`,
+        },
+        body: JSON.stringify({ bio: longBio }),
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+    });
+
+    test('rejects invalid profile photo format with 400', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${testUserToken}`,
+        },
+        body: JSON.stringify({ profilePhoto: 'https://malicious.site/script.js' }),
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+    });
+
+    test('removing profile photo (passing null) succeeds', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${testUserToken}`,
+        },
+        body: JSON.stringify({ profilePhoto: null }),
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.data.user.profilePhoto, null);
+    });
+
+    test('rejects duplicate username taken by another user with 409', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${testUserToken}`,
+        },
+        body: JSON.stringify({ username: 'testpilot' }), // already belongs to user 1
+      });
+
+      assert.equal(res.status, 409);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+    });
+
+    test('rejects invalid username (too short, spaces, or special characters) with 400', async () => {
+      const invalidUsernames = ['ab', 'a b', 'user!name', 'a'.repeat(31)];
+      for (const un of invalidUsernames) {
+        const res = await fetch(`${baseUrl}/api/auth/profile`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${testUserToken}`,
+          },
+          body: JSON.stringify({ username: un }),
+        });
+        assert.equal(res.status, 400);
+      }
+    });
+
+    test('valid username change succeeds, maintains performance history, and updates public profile route', async () => {
+      const newUsername = 'settingspilot_v2';
+
+      // 1. Change username
+      const res = await fetch(`${baseUrl}/api/auth/profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${testUserToken}`,
+        },
+        body: JSON.stringify({
+          username: newUsername,
+          bio: 'Updated bio after username rename.',
+        }),
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.data.user.username, newUsername);
+
+      // 2. Query public profile with NEW username
+      const pubRes = await fetch(`${baseUrl}/api/users/${newUsername}/profile`);
+      assert.equal(pubRes.status, 200);
+      const pubData = await pubRes.json();
+      assert.equal(pubData.data.username, newUsername);
+      assert.equal(pubData.data.bio, 'Updated bio after username rename.');
+
+      // 3. Verify performance history remains linked
+      assert.equal(pubData.data.ranked.summary.totalTests, 1);
+      assert.equal(pubData.data.ranked.summary.personalBest.wpm, 92);
+
+      // 4. Old username route now returns 404
+      const oldRes = await fetch(`${baseUrl}/api/users/settingspilot/profile`);
+      assert.equal(oldRes.status, 404);
+    });
+  });
+
+  describe('POST /api/auth/change-password & Security', () => {
+    let pwUserToken;
+
+    before(async () => {
+      const signupRes = await fetch(`${baseUrl}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'passwordtester',
+          email: 'pwtest@example.com',
+          password: 'InitialPassword123!',
+        }),
+      });
+      const data = await signupRes.json();
+      pwUserToken = data.token;
+    });
+
+    test('unauthenticated POST /api/auth/change-password returns 401', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: 'InitialPassword123!',
+          newPassword: 'BrandNewPassword456!',
+          confirmPassword: 'BrandNewPassword456!',
+        }),
+      });
+      assert.equal(res.status, 401);
+    });
+
+    test('wrong current password returns 400', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${pwUserToken}`,
+        },
+        body: JSON.stringify({
+          currentPassword: 'WrongPassword!',
+          newPassword: 'BrandNewPassword456!',
+          confirmPassword: 'BrandNewPassword456!',
+        }),
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+      assert.equal(data.message, 'Current password is incorrect.');
+    });
+
+    test('mismatched confirmation password returns 400', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${pwUserToken}`,
+        },
+        body: JSON.stringify({
+          currentPassword: 'InitialPassword123!',
+          newPassword: 'BrandNewPassword456!',
+          confirmPassword: 'DifferentPassword789!',
+        }),
+      });
+
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+    });
+
+    test('valid change-password updates password and allows login with new password', async () => {
+      // 1. Change password
+      const changeRes = await fetch(`${baseUrl}/api/auth/change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${pwUserToken}`,
+        },
+        body: JSON.stringify({
+          currentPassword: 'InitialPassword123!',
+          newPassword: 'BrandNewPassword456!',
+          confirmPassword: 'BrandNewPassword456!',
+        }),
+      });
+
+      assert.equal(changeRes.status, 200);
+      const changeData = await changeRes.json();
+      assert.equal(changeData.status, 'success');
+
+      // 2. Old password login now fails (401)
+      const oldLoginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'pwtest@example.com',
+          password: 'InitialPassword123!',
+        }),
+      });
+      assert.equal(oldLoginRes.status, 401);
+
+      // 3. New password login succeeds (200)
+      const newLoginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'pwtest@example.com',
+          password: 'BrandNewPassword456!',
+        }),
+      });
+      assert.equal(newLoginRes.status, 200);
+      const newLoginData = await newLoginRes.json();
+      assert.equal(newLoginData.status, 'success');
+      assert.ok(newLoginData.token);
+    });
+  });
 });

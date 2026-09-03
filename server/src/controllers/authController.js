@@ -5,6 +5,8 @@ import Performance from '../models/Performance.js';
 import { evaluateBadges } from '../utils/badgeRules.js';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+const dataUriRegex = /^data:image\/(png|jpeg|jpg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 
 /**
  * Helper to generate JWT token containing only user ID.
@@ -38,11 +40,11 @@ export const signup = async (req, res) => {
     const trimmedUsername = username.trim();
     const trimmedEmail = email.trim().toLowerCase();
 
-    // Validate username length
-    if (trimmedUsername.length < 3 || trimmedUsername.length > 30) {
+    // Validate username length and character format
+    if (!usernameRegex.test(trimmedUsername)) {
       return res.status(400).json({
         status: 'error',
-        message: 'Username must be between 3 and 30 characters in length.',
+        message: 'Username must be between 3 and 30 characters and contain only letters, numbers, and underscores.',
       });
     }
 
@@ -78,7 +80,7 @@ export const signup = async (req, res) => {
       });
     }
 
-    const existingUsername = await User.findOne({ username: trimmedUsername });
+    const existingUsername = await User.findOne({ username: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') } });
     if (existingUsername) {
       return res.status(409).json({
         status: 'error',
@@ -95,6 +97,8 @@ export const signup = async (req, res) => {
       username: trimmedUsername,
       email: trimmedEmail,
       passwordHash,
+      bio: '',
+      profilePhoto: null,
       practiceStatsVisibility: 'private',
     });
 
@@ -109,6 +113,8 @@ export const signup = async (req, res) => {
         id: newUser._id.toString(),
         username: newUser.username,
         email: newUser.email,
+        bio: newUser.bio || '',
+        profilePhoto: newUser.profilePhoto || null,
         practiceStatsVisibility: newUser.practiceStatsVisibility || 'private',
         createdAt: newUser.createdAt,
       },
@@ -176,6 +182,8 @@ export const login = async (req, res) => {
         id: user._id.toString(),
         username: user.username,
         email: user.email,
+        bio: user.bio || '',
+        profilePhoto: user.profilePhoto || null,
         practiceStatsVisibility: user.practiceStatsVisibility || 'private',
       },
     });
@@ -208,6 +216,8 @@ export const getMe = async (req, res) => {
         id: user._id.toString(),
         username: user.username,
         email: user.email,
+        bio: user.bio || '',
+        profilePhoto: user.profilePhoto || null,
         practiceStatsVisibility: user.practiceStatsVisibility || 'private',
         createdAt: user.createdAt,
       },
@@ -222,10 +232,10 @@ export const getMe = async (req, res) => {
 };
 
 /**
- * Update authenticated user privacy settings.
- * PATCH /api/auth/privacy
+ * Update authenticated user profile and account details.
+ * PATCH /api/auth/profile
  */
-export const updatePrivacy = async (req, res) => {
+export const updateProfile = async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -235,54 +245,207 @@ export const updatePrivacy = async (req, res) => {
       });
     }
 
-    const { practiceStatsVisibility } = req.body || {};
-    if (!practiceStatsVisibility || !['private', 'public'].includes(practiceStatsVisibility.toLowerCase().trim())) {
-      return res.status(400).json({
-        status: 'error',
-        message: "Invalid visibility. Must be 'private' or 'public'.",
-      });
-    }
-
-    const normalizedVisibility = practiceStatsVisibility.toLowerCase().trim();
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { practiceStatsVisibility: normalizedVisibility },
-      { returnDocument: 'after' }
-    );
-
-    if (!updatedUser) {
+    const user = await User.findById(userId);
+    if (!user) {
       return res.status(404).json({
         status: 'error',
         message: 'User not found.',
       });
     }
 
+    const { username, bio, profilePhoto, practiceStatsVisibility } = req.body || {};
+
+    // 1. Update Username
+    if (username !== undefined) {
+      const trimmedUsername = typeof username === 'string' ? username.trim() : '';
+      if (!usernameRegex.test(trimmedUsername)) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Username must be between 3 and 30 characters and contain only letters, numbers, and underscores.',
+        });
+      }
+
+      // If changed, check uniqueness
+      if (trimmedUsername.toLowerCase() !== user.username.toLowerCase()) {
+        const duplicate = await User.findOne({
+          _id: { $ne: userId },
+          username: { $regex: new RegExp(`^${trimmedUsername}$`, 'i') },
+        });
+        if (duplicate) {
+          return res.status(409).json({
+            status: 'error',
+            message: 'This username is already taken. Please choose another.',
+          });
+        }
+      }
+      user.username = trimmedUsername;
+    }
+
+    // 2. Update Bio
+    if (bio !== undefined) {
+      const trimmedBio = typeof bio === 'string' ? bio.trim() : '';
+      if (trimmedBio.length > 200) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Bio cannot exceed 200 characters.',
+        });
+      }
+      user.bio = trimmedBio;
+    }
+
+    // 3. Update Profile Photo
+    if (profilePhoto !== undefined) {
+      if (profilePhoto === null || profilePhoto === '') {
+        user.profilePhoto = null;
+      } else if (typeof profilePhoto === 'string') {
+        if (profilePhoto.length > 350000) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Profile photo is too large. Maximum image size is 250KB.',
+          });
+        }
+        if (!dataUriRegex.test(profilePhoto)) {
+          return res.status(400).json({
+            status: 'error',
+            message: 'Invalid image format. Supported formats: PNG, JPEG, WebP, GIF.',
+          });
+        }
+        user.profilePhoto = profilePhoto;
+      } else {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Invalid profile photo data.',
+        });
+      }
+    }
+
+    // 4. Update Practice Visibility
+    if (practiceStatsVisibility !== undefined) {
+      const normalizedVisibility = String(practiceStatsVisibility).toLowerCase().trim();
+      if (!['private', 'public'].includes(normalizedVisibility)) {
+        return res.status(400).json({
+          status: 'error',
+          message: "Invalid visibility. Must be 'private' or 'public'.",
+        });
+      }
+      user.practiceStatsVisibility = normalizedVisibility;
+    }
+
+    await user.save();
+
     return res.status(200).json({
       status: 'success',
-      message: 'Privacy settings updated successfully.',
+      message: 'Profile updated successfully.',
       data: {
         user: {
-          id: updatedUser._id.toString(),
-          username: updatedUser.username,
-          email: updatedUser.email,
-          practiceStatsVisibility: updatedUser.practiceStatsVisibility,
-          createdAt: updatedUser.createdAt,
+          id: user._id.toString(),
+          username: user.username,
+          email: user.email,
+          bio: user.bio || '',
+          profilePhoto: user.profilePhoto || null,
+          practiceStatsVisibility: user.practiceStatsVisibility,
+          createdAt: user.createdAt,
         },
       },
     });
   } catch (error) {
-    console.error('[Auth Controller] UpdatePrivacy error:', error.message);
+    console.error('[Auth Controller] UpdateProfile error:', error.message);
     return res.status(500).json({
       status: 'error',
-      message: 'Server error updating privacy settings.',
+      message: 'Server error updating profile.',
     });
   }
 };
 
 /**
+ * Change authenticated user password.
+ * POST /api/auth/change-password
+ */
+export const changePassword = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required.',
+      });
+    }
+
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Current password, new password, and confirmation are required.',
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'New password and confirmation do not match.',
+      });
+    }
+
+    if (typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'New password must be at least 6 characters long.',
+      });
+    }
+
+    if (newPassword.length > 128) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'New password cannot exceed 128 characters.',
+      });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found.',
+      });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Current password is incorrect.',
+      });
+    }
+
+    const saltRounds = 10;
+    user.passwordHash = await bcrypt.hash(newPassword, saltRounds);
+    await user.save();
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Password changed successfully.',
+    });
+  } catch (error) {
+    console.error('[Auth Controller] ChangePassword error:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Server error changing password.',
+    });
+  }
+};
+
+/**
+ * Update authenticated user privacy settings (backward-compatible alias).
+ * PATCH /api/auth/privacy
+ */
+export const updatePrivacy = async (req, res) => {
+  return updateProfile(req, res);
+};
+
+/**
  * Retrieve a user's shareable public profile.
  * GET /api/users/:username/profile
- * Ranked data is ALWAYS public. Practice data is ONLY included if user has set practiceStatsVisibility to 'public'.
+ * Ranked data is ALWAYS public. Practice data is included for the owner or if practiceStatsVisibility is 'public'.
  */
 export const getPublicProfile = async (req, res) => {
   try {
@@ -420,6 +583,8 @@ export const getPublicProfile = async (req, res) => {
       data: {
         username: user.username,
         memberSince: user.createdAt,
+        bio: user.bio || '',
+        profilePhoto: user.profilePhoto || null,
         isOwner,
         ranked: {
           summary: rankedSummary,

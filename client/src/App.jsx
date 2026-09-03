@@ -7,6 +7,7 @@ import TypingTest from './components/TypingTest';
 import TestResult from './components/TestResult';
 import PerformanceHistory from './components/PerformanceHistory';
 import PublicProfile from './components/PublicProfile';
+import Settings from './components/Settings';
 import { SUPPORTED_LANGUAGES, getRandomSnippet } from './data/snippets';
 import './App.css';
 
@@ -15,7 +16,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Top-level view: 'dashboard' | 'test' | 'history'
+  // Top-level view: 'dashboard' | 'test' | 'history' | 'settings'
   const [currentView, setCurrentView] = useState('dashboard');
   const [historyInitialMode, setHistoryInitialMode] = useState('practice');
 
@@ -150,54 +151,57 @@ function App() {
 
       api
         .savePerformance(performancePayload)
-        .then((res) => {
-          if (res && res.status === 'success') {
-            setSaveStatus('saved');
-          } else {
-            console.warn('[Performance Save] Non-success response:', res);
-            setSaveStatus('error');
-          }
+        .then(() => {
+          setSaveStatus('saved');
         })
         .catch((err) => {
-          console.error('[Performance Save] Error:', err.message);
+          console.error('[Persistence] Error saving performance attempt:', err.message);
           setSaveStatus('error');
         });
     }
   };
 
-  // Restart current test with a new snippet of same language/difficulty
+  // User requests another test with the same configuration
   const handleTryAgain = () => {
-    const nextSnippet = getRandomSnippet(selectedLanguage, selectedDifficulty, currentSnippet?.id);
-    setCurrentSnippet(nextSnippet);
-    setTestResults(null);
-    setSaveStatus(null);
-    attemptSavedRef.current = false;
-    setTestState('RUNNING');
+    handleStartTest();
   };
 
-  // Return to configuration setup
+  // User requests changing test parameters
   const handleChangeSettings = () => {
     setTestState('IDLE');
-    setCurrentSnippet(null);
     setTestResults(null);
     setSaveStatus(null);
-    attemptSavedRef.current = false;
   };
 
+  // Close public profile view and return to standard in-app dashboard
   const handleClosePublicProfile = () => {
     window.location.hash = '';
     setPublicProfileUsername(null);
+    setCurrentView('dashboard');
   };
 
-  const activeLanguageObj = SUPPORTED_LANGUAGES.find((l) => l.id === selectedLanguage);
-  const activeLanguageName = activeLanguageObj ? activeLanguageObj.name : selectedLanguage;
+  const handleOpenSettingsFromProfile = () => {
+    window.location.hash = '';
+    setPublicProfileUsername(null);
+    setCurrentView('settings');
+  };
+
+  // Get active language display name
+  const activeLanguageName = SUPPORTED_LANGUAGES.find((l) => l.id === selectedLanguage)?.name || selectedLanguage;
 
   return (
-    <div className="app-shell">
-      {/* Top Application Navigation */}
+    <div className="app-container">
+      {/* Top Navigation Bar */}
       <header className="navbar">
         <div className="navbar-container">
-          <div className="navbar-brand" onClick={() => { setCurrentView('dashboard'); setPublicProfileUsername(null); }}>
+          <div
+            className="navbar-brand"
+            onClick={() => {
+              setCurrentView('dashboard');
+              setPublicProfileUsername(null);
+              window.location.hash = '';
+            }}
+          >
             <img src="/codespeed-logo.png" alt="CodeSpeed Logo" className="brand-logo" />
             <span className="brand-name">CodeSpeed</span>
           </div>
@@ -240,6 +244,13 @@ function App() {
               >
                 History
               </button>
+              <button
+                type="button"
+                className={`nav-link ${currentView === 'settings' ? 'active' : ''}`}
+                onClick={() => setCurrentView('settings')}
+              >
+                Settings
+              </button>
             </nav>
           )}
 
@@ -250,11 +261,17 @@ function App() {
                   type="button"
                   className="user-nav-btn"
                   onClick={() => {
-                    window.location.hash = `/user/${user.username}`;
+                    window.location.hash = `/user/${encodeURIComponent(user.username)}`;
                   }}
                   title="View your public profile"
                 >
-                  <span className="user-nav-avatar">{(user.username || 'U')[0].toUpperCase()}</span>
+                  <span className="user-nav-avatar">
+                    {user.profilePhoto ? (
+                      <img src={user.profilePhoto} alt="" className="user-nav-photo" />
+                    ) : (
+                      (user.username || 'U')[0].toUpperCase()
+                    )}
+                  </span>
                   <span className="user-nav-name">{user.username}</span>
                 </button>
                 <button
@@ -278,6 +295,7 @@ function App() {
           <PublicProfile
             username={publicProfileUsername}
             onNavigateHome={handleClosePublicProfile}
+            onNavigateSettings={handleOpenSettingsFromProfile}
           />
         ) : authLoading ? (
           <div className="loading-container">
@@ -320,6 +338,17 @@ function App() {
                   setTestState('IDLE');
                   setCurrentView('test');
                 }}
+              />
+            )}
+
+            {/* View: Account & Profile Settings */}
+            {currentView === 'settings' && (
+              <Settings
+                user={user}
+                onUserUpdated={(updatedUser) => {
+                  setUser(updatedUser);
+                }}
+                onNavigateBack={() => setCurrentView('dashboard')}
               />
             )}
 
