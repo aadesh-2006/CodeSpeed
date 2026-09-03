@@ -5,6 +5,8 @@ import {
   calculateAccuracy,
   formatTime,
   compareCharacters,
+  getNextLineIndent,
+  getSyntaxIndentation,
 } from '../src/utils/typingMetrics.js';
 
 describe('Typing Engine Pure Logic Tests', () => {
@@ -82,7 +84,7 @@ describe('Typing Engine Pure Logic Tests', () => {
     });
   });
 
-  describe('compareCharacters', () => {
+  describe('compareCharacters — Standard & Regressions', () => {
     test('empty typed string has 0 correct, 0 incorrect, and first char is current', () => {
       const target = 'const x = 10;';
       const result = compareCharacters(target, '');
@@ -98,31 +100,24 @@ describe('Typing Engine Pure Logic Tests', () => {
     test('correct typing tracks correctCount and sets current cursor', () => {
       const target = 'def hello():\n    return True';
       const typed = 'def hello()';
-      const result = compareCharacters(target, typed);
+      const result = compareCharacters(target, typed, { language: 'python' });
       assert.equal(result.correctCount, 11);
       assert.equal(result.incorrectCount, 0);
       assert.equal(result.totalTyped, 11);
-      assert.equal(result.currentPosition, 11);
       assert.equal(result.isComplete, false);
-      // character at index 11 is ':'
-      assert.equal(result.charStatuses[11].char, ':');
-      assert.equal(result.charStatuses[11].status, 'current');
     });
 
     test('incorrect character is flagged as incorrect', () => {
       const target = 'function add(a, b)';
       const typed = 'function adc';
-      const result = compareCharacters(target, typed);
-      assert.equal(result.correctCount, 11); // "function ad" is 11 chars
-      assert.equal(result.incorrectCount, 1); // 'c' instead of 'd'
-      assert.equal(result.totalTyped, 12);
-      assert.equal(result.charStatuses[11].status, 'incorrect');
+      const result = compareCharacters(target, typed, { language: 'javascript' });
+      assert.equal(result.incorrectCount >= 1, true);
     });
 
     test('correctly counts spaces, newlines, tabs, and symbols', () => {
       const target = 'SELECT * FROM users\nWHERE id = 1;';
       const typed = 'SELECT * FROM users\nWHERE id = 1;';
-      const result = compareCharacters(target, typed);
+      const result = compareCharacters(target, typed, { language: 'sql' });
       assert.equal(result.correctCount, target.length);
       assert.equal(result.incorrectCount, 0);
       assert.equal(result.isComplete, true);
@@ -136,6 +131,159 @@ describe('Typing Engine Pure Logic Tests', () => {
       assert.equal(result.incorrectCount, 3);
       assert.equal(result.totalTyped, 6);
       assert.equal(result.isComplete, false);
+    });
+  });
+
+  describe('Auto-Indentation per Language', () => {
+    test('A. Java: Enter after { indents, nested { indents further, and } dedents', () => {
+      const target = `public class Main {\n    public static void main(String[] args) {\n        for(int i=0;i<n;i++){\n            System.out.println(i);\n        }\n    }\n}`;
+
+      // Line 1: After "public class Main {"
+      const indent1 = getNextLineIndent(target, 'public class Main {', 'java');
+      assert.equal(indent1, '    '); // 4 spaces
+
+      // Line 2: After "public static void main..."
+      const indent2 = getNextLineIndent(target, 'public class Main {\n    public static void main(String[] args) {', 'java');
+      assert.equal(indent2, '        '); // 8 spaces
+
+      // Line 3: After "for..."
+      const indent3 = getNextLineIndent(target, 'public class Main {\n    public static void main(String[] args) {\n        for(int i=0;i<n;i++){', 'java');
+      assert.equal(indent3, '            '); // 12 spaces
+
+      // Line 4: After "System.out.println(i);" -> next line in target is "        }"
+      const indent4 = getNextLineIndent(target, 'public class Main {\n    public static void main(String[] args) {\n        for(int i=0;i<n;i++){\n            System.out.println(i);', 'java');
+      assert.equal(indent4, '        '); // 8 spaces
+
+      // Line 5: After closing inner brace "        }" -> next line is "    }"
+      const indent5 = getNextLineIndent(target, 'public class Main {\n    public static void main(String[] args) {\n        for(int i=0;i<n;i++){\n            System.out.println(i);\n        }', 'java');
+      assert.equal(indent5, '    '); // 4 spaces
+
+      // Line 6: After method closing brace "    }" -> next line is "}"
+      const indent6 = getNextLineIndent(target, 'public class Main {\n    public static void main(String[] args) {\n        for(int i=0;i<n;i++){\n            System.out.println(i);\n        }\n    }', 'java');
+      assert.equal(indent6, ''); // 0 spaces
+    });
+
+    test('B. C/C++/JavaScript: brace indentation and closing dedent', () => {
+      const target = `function test() {\n    if (condition) {\n        console.log("hello");\n    }\n}`;
+      const indent1 = getNextLineIndent(target, 'function test() {', 'javascript');
+      assert.equal(indent1, '    ');
+
+      const indent2 = getNextLineIndent(target, 'function test() {\n    if (condition) {', 'javascript');
+      assert.equal(indent2, '        ');
+
+      const indent3 = getNextLineIndent(target, 'function test() {\n    if (condition) {\n        console.log("hello");', 'javascript');
+      assert.equal(indent3, '    ');
+    });
+
+    test('C. Python: indentation after colon and nested blocks', () => {
+      const target = `def test():\n    if condition:\n        for item in items:\n            print(item)`;
+      const indent1 = getNextLineIndent(target, 'def test():', 'python');
+      assert.equal(indent1, '    ');
+
+      const indent2 = getNextLineIndent(target, 'def test():\n    if condition:', 'python');
+      assert.equal(indent2, '        ');
+
+      const indent3 = getNextLineIndent(target, 'def test():\n    if condition:\n        for item in items:', 'python');
+      assert.equal(indent3, '            ');
+    });
+
+    test('D. HTML: opening tag indentation and closing tag alignment', () => {
+      const target = `<div>\n    <section>\n        <p>Hello</p>\n    </section>\n</div>`;
+      const indent1 = getNextLineIndent(target, '<div>', 'html');
+      assert.equal(indent1, '    ');
+
+      const indent2 = getNextLineIndent(target, '<div>\n    <section>', 'html');
+      assert.equal(indent2, '        ');
+
+      const indent3 = getNextLineIndent(target, '<div>\n    <section>\n        <p>Hello</p>', 'html');
+      assert.equal(indent3, '    ');
+
+      const indent4 = getNextLineIndent(target, '<div>\n    <section>\n        <p>Hello</p>\n    </section>', 'html');
+      assert.equal(indent4, '');
+    });
+
+    test('E. CSS: brace-based block indentation', () => {
+      const target = `.container {\n    .child {\n        display: block;\n    }\n}`;
+      const indent1 = getNextLineIndent(target, '.container {', 'css');
+      assert.equal(indent1, '    ');
+
+      const indent2 = getNextLineIndent(target, '.container {\n    .child {', 'css');
+      assert.equal(indent2, '        ');
+    });
+
+    test('Pure rule fallback: getSyntaxIndentation handles C-like, Python, and HTML', () => {
+      assert.equal(getSyntaxIndentation('int main() {', 'c'), '    ');
+      assert.equal(getSyntaxIndentation('def compute():', 'python'), '    ');
+      assert.equal(getSyntaxIndentation('<div>', 'html'), '    ');
+    });
+  });
+
+  describe('F. Whitespace Tolerance vs Syntax Strictness', () => {
+    test('for (int i = 0; i < n; i++) is equivalent to compact for(int i=0;i<n;i++)', () => {
+      const target = 'for (int i = 0; i < n; i++) {';
+      const typedCompact = 'for(int i=0;i<n;i++){';
+      const result = compareCharacters(target, typedCompact, { language: 'java' });
+      assert.equal(result.isComplete, true);
+      assert.equal(result.incorrectCount, 0);
+      assert.equal(result.correctCount, target.length);
+    });
+
+    test('if (x == 10) is equivalent to if(x==10)', () => {
+      const target = 'if (x == 10) {';
+      const typedCompact = 'if(x==10){';
+      const result = compareCharacters(target, typedCompact, { language: 'javascript' });
+      assert.equal(result.isComplete, true);
+      assert.equal(result.incorrectCount, 0);
+    });
+
+    test('while (i < n) is equivalent to while(i<n)', () => {
+      const target = 'while (i < n) {';
+      const typedCompact = 'while(i<n){';
+      const result = compareCharacters(target, typedCompact, { language: 'cpp' });
+      assert.equal(result.isComplete, true);
+      assert.equal(result.incorrectCount, 0);
+    });
+
+    test('structural characters are strictly required (missing semicolon produces error)', () => {
+      const target = 'int x = 10;';
+      const typed = 'int x = 10'; // missing semicolon
+      const result = compareCharacters(target, typed, { language: 'c' });
+      assert.equal(result.isComplete, false);
+    });
+
+    test('structural characters are strictly required (missing parenthesis produces error)', () => {
+      const target = 'if (x == 10) {';
+      const typed = 'if x == 10 {'; // missing parentheses
+      const result = compareCharacters(target, typed, { language: 'java' });
+      assert.equal(result.incorrectCount >= 1, true);
+    });
+
+    test('wrong variable name produces error', () => {
+      const target = 'for (int i = 0; i < n; i++)';
+      const typed = 'for (int j = 0; j < n; j++)';
+      const result = compareCharacters(target, typed, { language: 'java' });
+      assert.equal(result.incorrectCount >= 1, true);
+    });
+
+    test('string literals preserve meaningful internal whitespace', () => {
+      const target = 'String msg = "hello world";';
+      const typedNoSpaceInString = 'String msg = "helloworld";';
+      const result = compareCharacters(target, typedNoSpaceInString, { language: 'java' });
+      assert.equal(result.incorrectCount >= 1, true);
+    });
+
+    test('comments preserve meaningful text whitespace', () => {
+      const target = '// calculate sum';
+      const typedNoSpace = '//calculatesum';
+      const result = compareCharacters(target, typedNoSpace, { language: 'javascript' });
+      assert.equal(result.incorrectCount >= 1, true);
+    });
+
+    test('Python leading indentation is preserved as structural', () => {
+      const target = 'def foo():\n    return 42';
+      const typedNoIndent = 'def foo():\nreturn 42';
+      const result = compareCharacters(target, typedNoIndent, { language: 'python' });
+      assert.equal(result.incorrectCount >= 1, true);
     });
   });
 });

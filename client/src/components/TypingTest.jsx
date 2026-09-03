@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { calculateWPM, calculateAccuracy, formatTime, compareCharacters } from '../utils/typingMetrics';
+import {
+  calculateWPM,
+  calculateAccuracy,
+  formatTime,
+  compareCharacters,
+  getNextLineIndent,
+} from '../utils/typingMetrics';
 
 export function TypingTest({ snippet, durationSeconds, languageName, onFinish, onCancel, onRestart }) {
   const [typedCode, setTypedCode] = useState('');
@@ -12,6 +18,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
   const codeDisplayRef = useRef(null);
 
   const targetCode = snippet?.code || '';
+  const language = snippet?.language || '';
 
   // Focus textarea on mount and reset state
   useEffect(() => {
@@ -61,8 +68,8 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
     }
   }, [timeLeft, hasStarted]);
 
-  // Live character comparison
-  const comparison = compareCharacters(targetCode, typedCode);
+  // Live character comparison with whitespace tolerance and language awareness
+  const comparison = compareCharacters(targetCode, typedCode, { language });
   const liveWpm = calculateWPM(comparison.correctCount, elapsedSeconds);
   const liveAccuracy = calculateAccuracy(comparison.correctCount, comparison.totalTyped);
 
@@ -107,7 +114,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
     setTypedCode(e.target.value);
   };
 
-  // Keyboard navigation & indentation handling (Tab inserts 2 spaces)
+  // Keyboard navigation & smart indentation handling (Enter auto-indents, Tab inserts 2 spaces)
   const handleKeyDown = (e) => {
     if (timeLeft === 0) return;
 
@@ -115,6 +122,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
       setHasStarted(true);
     }
 
+    // Tab key inserts 2 spaces
     if (e.key === 'Tab') {
       e.preventDefault();
       const textarea = textareaRef.current;
@@ -127,12 +135,35 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
       const updated = typedCode.substring(0, start) + spaces + typedCode.substring(end);
       setTypedCode(updated);
 
-      // Restore cursor position after inserted spaces
       requestAnimationFrame(() => {
         if (textareaRef.current) {
           textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + spaces.length;
         }
       });
+      return;
+    }
+
+    // Enter key auto-indents to next line
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+
+      const nextIndent = getNextLineIndent(targetCode, typedCode.substring(0, start), language);
+      const insertion = '\n' + nextIndent;
+
+      const updated = typedCode.substring(0, start) + insertion + typedCode.substring(end);
+      setTypedCode(updated);
+
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + insertion.length;
+        }
+      });
+      return;
     }
   };
 
