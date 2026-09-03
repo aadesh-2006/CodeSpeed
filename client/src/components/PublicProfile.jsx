@@ -99,7 +99,6 @@ export function PublicProfile({ username, onNavigateHome, onNavigateSettings }) 
             <div className="profile-user-info">
               <div className="profile-username-row">
                 <h1 className="profile-username">@{profile.username}</h1>
-                <span className="badge-public">Public Profile</span>
                 {profile.isOwner && <span className="badge-owner">You</span>}
               </div>
               {profile.bio ? (

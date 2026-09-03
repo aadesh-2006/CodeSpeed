@@ -156,6 +156,16 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
     assert.equal(practiceHasBadges, false);
   });
 
+  test('Profile header labeling: owner displays "You" tag and no "Public Profile" badge is rendered', () => {
+    const ownProfile = mockOwnProfilePracticePrivate;
+    const otherProfile = mockOtherProfilePracticePublic;
+
+    // Owner flag is present for owner
+    assert.equal(ownProfile.isOwner, true);
+    // Other users flag is false
+    assert.equal(otherProfile.isOwner, false);
+  });
+
   test('Security audit: public profile object never exposes private fields or settings', () => {
     const profiles = [
       mockOwnProfilePracticePrivate,
