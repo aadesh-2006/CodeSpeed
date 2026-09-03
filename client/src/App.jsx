@@ -9,6 +9,7 @@ import PerformanceHistory from './components/PerformanceHistory';
 import PublicProfile from './components/PublicProfile';
 import Settings from './components/Settings';
 import UserSearch from './components/UserSearch';
+import VerifyEmail from './components/VerifyEmail';
 import { SUPPORTED_LANGUAGES, getRandomSnippet } from './data/snippets';
 import './App.css';
 
@@ -21,8 +22,9 @@ function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [historyInitialMode, setHistoryInitialMode] = useState('practice');
 
-  // Shareable Public Profile view state (derived from #/user/:username)
+  // Shareable Public Profile & Email Verification routing states
   const [publicProfileUsername, setPublicProfileUsername] = useState(null);
+  const [verifyEmailToken, setVerifyEmailToken] = useState(null);
 
   // Typing engine & mode states
   const [selectedMode, setSelectedMode] = useState('practice'); // 'practice' | 'ranked'
@@ -38,15 +40,23 @@ function App() {
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-  // Listen to URL hash routing for shareable public profile: #/user/:username
+  // Listen to URL hash routing for shareable public profile: #/user/:username and email verification: #/verify-email?token=...
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash || '';
-      const match = hash.match(/^#\/user\/([^/?#]+)/);
-      if (match && match[1]) {
-        setPublicProfileUsername(decodeURIComponent(match[1]));
+      const userMatch = hash.match(/^#\/user\/([^/?#]+)/);
+
+      if (userMatch && userMatch[1]) {
+        setPublicProfileUsername(decodeURIComponent(userMatch[1]));
+        setVerifyEmailToken(null);
+      } else if (hash.startsWith('#/verify-email')) {
+        const queryParams = new URLSearchParams(hash.split('?')[1] || '');
+        const token = queryParams.get('token') || '';
+        setVerifyEmailToken(token);
+        setPublicProfileUsername(null);
       } else {
         setPublicProfileUsername(null);
+        setVerifyEmailToken(null);
       }
     };
 
@@ -156,43 +166,35 @@ function App() {
           setSaveStatus('saved');
         })
         .catch((err) => {
-          console.error('[Persistence] Error saving performance attempt:', err.message);
+          console.error('[Persistence] Failed to save test attempt:', err.message);
           setSaveStatus('error');
         });
     }
   };
 
-  // User requests another test with the same configuration
   const handleTryAgain = () => {
     handleStartTest();
   };
 
-  // User requests changing test parameters
   const handleChangeSettings = () => {
     setTestState('IDLE');
-    setTestResults(null);
-    setSaveStatus(null);
   };
 
-  // Close public profile view and return to standard in-app dashboard
   const handleClosePublicProfile = () => {
-    window.location.hash = '';
     setPublicProfileUsername(null);
+    window.location.hash = '';
     setCurrentView('dashboard');
   };
 
   const handleOpenSettingsFromProfile = () => {
-    window.location.hash = '';
     setPublicProfileUsername(null);
+    window.location.hash = '';
     setCurrentView('settings');
   };
 
-  // Get active language display name
-  const activeLanguageName = SUPPORTED_LANGUAGES.find((l) => l.id === selectedLanguage)?.name || selectedLanguage;
-
   return (
     <div className="app-container">
-      {/* Top Navigation Bar */}
+      {/* Header */}
       <header className="navbar">
         <div className="navbar-container">
           <div
@@ -200,6 +202,7 @@ function App() {
             onClick={() => {
               setCurrentView('dashboard');
               setPublicProfileUsername(null);
+              setVerifyEmailToken(null);
               window.location.hash = '';
             }}
           >
@@ -207,7 +210,7 @@ function App() {
             <span className="brand-name">CodeSpeed</span>
           </div>
 
-          {user && !publicProfileUsername && (
+          {user && !publicProfileUsername && verifyEmailToken === null && (
             <nav className="navbar-nav">
               <button
                 type="button"
@@ -298,8 +301,17 @@ function App() {
 
       {/* Main Content Area */}
       <main className="main-content">
-        {/* Shareable Public Profile Screen (Active when URL hash has #/user/:username) */}
-        {publicProfileUsername ? (
+        {/* Email Verification Screen (Active when URL hash has #/verify-email) */}
+        {verifyEmailToken !== null ? (
+          <VerifyEmail
+            token={verifyEmailToken}
+            onProceedToLogin={() => {
+              setVerifyEmailToken(null);
+              window.location.hash = '';
+            }}
+          />
+        ) : publicProfileUsername ? (
+          /* Shareable Public Profile Screen (Active when URL hash has #/user/:username) */
           <PublicProfile
             username={publicProfileUsername}
             onNavigateHome={handleClosePublicProfile}
@@ -353,38 +365,33 @@ function App() {
             {currentView === 'settings' && (
               <Settings
                 user={user}
-                onUserUpdated={(updatedUser) => {
-                  setUser(updatedUser);
-                }}
+                onUserUpdated={(updatedUser) => setUser(updatedUser)}
                 onNavigateBack={() => setCurrentView('dashboard')}
               />
             )}
 
-            {/* View: Typing Practice & Test */}
+            {/* View: Typing Test Engine */}
             {currentView === 'test' && (
               <div className="test-view-container">
                 {testState === 'IDLE' && (
                   <TestSetup
-                    selectedMode={selectedMode}
-                    setSelectedMode={setSelectedMode}
-                    selectedLanguage={selectedLanguage}
-                    setSelectedLanguage={setSelectedLanguage}
-                    selectedDifficulty={selectedDifficulty}
-                    setSelectedDifficulty={setSelectedDifficulty}
-                    selectedDuration={selectedDuration}
-                    setSelectedDuration={setSelectedDuration}
-                    onStartTest={handleStartTest}
+                    mode={selectedMode}
+                    language={selectedLanguage}
+                    difficulty={selectedDifficulty}
+                    duration={selectedDuration}
+                    onLanguageChange={setSelectedLanguage}
+                    onDifficultyChange={setSelectedDifficulty}
+                    onDurationChange={setSelectedDuration}
+                    onStart={handleStartTest}
                   />
                 )}
 
                 {testState === 'RUNNING' && currentSnippet && (
                   <TypingTest
                     snippet={currentSnippet}
-                    durationSeconds={selectedDuration}
-                    languageName={activeLanguageName}
+                    duration={selectedDuration}
+                    language={selectedLanguage}
                     onFinish={handleFinishTest}
-                    onCancel={handleChangeSettings}
-                    onRestart={handleTryAgain}
                   />
                 )}
 

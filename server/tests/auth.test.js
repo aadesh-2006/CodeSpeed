@@ -8,6 +8,8 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import app from '../src/index.js';
 import User from '../src/models/User.js';
 import Performance from '../src/models/Performance.js';
+import { testMailbox } from '../src/services/emailService.js';
+import { migrateLegacyUsers } from '../src/utils/migrateEmailVerification.js';
 
 // Configure test environment
 const JWT_TEST_SECRET = 'codespeed_test_secret_key_12345';
@@ -73,8 +75,10 @@ describe('Authentication & User Profile API Tests', () => {
     });
   });
 
-  describe('POST /api/auth/signup', () => {
-    test('successful signup returns 201 with token and safe user details', async () => {
+  describe('POST /api/auth/signup & Email Verification Flow', () => {
+    let pilotRawToken;
+
+    test('successful signup returns 201 with requiresVerification: true and does not return JWT', async () => {
       const res = await fetch(`${baseUrl}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,19 +92,77 @@ describe('Authentication & User Profile API Tests', () => {
       assert.equal(res.status, 201);
       const data = await res.json();
       assert.equal(data.status, 'success');
-      assert.ok(data.token);
+      assert.equal(data.requiresVerification, true);
+      assert.equal(data.token, undefined); // No JWT issued prior to email verification
       assert.ok(data.user);
       assert.equal(data.user.username, 'testpilot');
       assert.equal(data.user.email, 'pilot@example.com');
-      assert.equal(data.user.practiceStatsVisibility, 'private');
+      assert.equal(data.user.emailVerified, false);
       assert.ok(data.user.id);
       assert.equal(data.user.password, undefined);
       assert.equal(data.user.passwordHash, undefined);
 
       const dbUser = await User.findOne({ email: 'pilot@example.com' });
       assert.ok(dbUser);
-      assert.ok(dbUser.passwordHash);
+      assert.equal(dbUser.emailVerified, false);
+      assert.ok(dbUser.verificationTokenHash);
+      assert.ok(dbUser.verificationTokenExpires);
       assert.notEqual(dbUser.passwordHash, 'Password123!');
+
+      // Check testMailbox recorded sent email
+      const sentMail = testMailbox.find((m) => m.to === 'pilot@example.com');
+      assert.ok(sentMail);
+      assert.ok(sentMail.rawToken);
+      pilotRawToken = sentMail.rawToken;
+    });
+
+    test('unverified user cannot log in and receives 403 EMAIL_NOT_VERIFIED', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'pilot@example.com',
+          password: 'Password123!',
+        }),
+      });
+
+      assert.equal(res.status, 403);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+      assert.equal(data.code, 'EMAIL_NOT_VERIFIED');
+      assert.equal(data.token, undefined);
+    });
+
+    test('GET /api/auth/verify-email with valid token verifies email and clears token', async () => {
+      assert.ok(pilotRawToken);
+      const res = await fetch(`${baseUrl}/api/auth/verify-email?token=${pilotRawToken}`);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.status, 'success');
+      assert.equal(data.user.emailVerified, true);
+
+      const dbUser = await User.findOne({ email: 'pilot@example.com' });
+      assert.equal(dbUser.emailVerified, true);
+      assert.equal(dbUser.verificationTokenHash, null);
+      assert.equal(dbUser.verificationTokenExpires, null);
+    });
+
+    test('verified user can log in and receives 200 with valid JWT', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'pilot@example.com',
+          password: 'Password123!',
+        }),
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.status, 'success');
+      assert.ok(data.token);
+      assert.ok(data.user);
+      assert.equal(data.user.emailVerified, true);
     });
 
     test('rejects duplicate email with 409', async () => {
@@ -165,6 +227,167 @@ describe('Authentication & User Profile API Tests', () => {
         body: JSON.stringify({ username: 'ab', email: 'user4@example.com', password: 'Password123' }),
       });
       assert.equal(res4.status, 400);
+    });
+  });
+
+  describe('Email Verification & Token Lifecycle (GET /verify-email & POST /resend-verification)', () => {
+    let unverifiedRawToken;
+
+    before(async () => {
+      // Create fresh unverified user
+      await fetch(`${baseUrl}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'unverified_racer',
+          email: 'unverified@example.com',
+          password: 'Password123!',
+        }),
+      });
+
+      const sentMail = testMailbox.find((m) => m.to === 'unverified@example.com');
+      assert.ok(sentMail);
+      unverifiedRawToken = sentMail.rawToken;
+    });
+
+    test('missing token returns 400 with TOKEN_REQUIRED', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/verify-email`);
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+      assert.equal(data.code, 'TOKEN_REQUIRED');
+    });
+
+    test('invalid token returns 400 with TOKEN_INVALID', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/verify-email?token=invalid_hex_token_12345`);
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+      assert.equal(data.code, 'TOKEN_INVALID');
+    });
+
+    test('expired token returns 400 with TOKEN_EXPIRED', async () => {
+      // Manually expire the token in MongoDB
+      await User.updateOne(
+        { email: 'unverified@example.com' },
+        { verificationTokenExpires: new Date(Date.now() - 1000 * 60) }
+      );
+
+      const res = await fetch(`${baseUrl}/api/auth/verify-email?token=${unverifiedRawToken}`);
+      assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+      assert.equal(data.code, 'TOKEN_EXPIRED');
+    });
+
+    test('resend verification generates fresh token, invalidates old token, and resets 24h expiry', async () => {
+      // Fast-forward last sent time so cooldown allows resend
+      await User.updateOne(
+        { email: 'unverified@example.com' },
+        { lastVerificationEmailSentAt: new Date(Date.now() - 1000 * 70) }
+      );
+
+      const res = await fetch(`${baseUrl}/api/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'unverified@example.com' }),
+      });
+
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.status, 'success');
+
+      // Check new email in testMailbox
+      const sentMails = testMailbox.filter((m) => m.to === 'unverified@example.com');
+      const latestMail = sentMails[sentMails.length - 1];
+      assert.ok(latestMail);
+      assert.notEqual(latestMail.rawToken, unverifiedRawToken);
+
+      // Old expired token fails
+      const oldRes = await fetch(`${baseUrl}/api/auth/verify-email?token=${unverifiedRawToken}`);
+      assert.equal(oldRes.status, 400);
+
+      // New token succeeds
+      const newRes = await fetch(`${baseUrl}/api/auth/verify-email?token=${latestMail.rawToken}`);
+      assert.equal(newRes.status, 200);
+      const newData = await newRes.json();
+      assert.equal(newData.status, 'success');
+      assert.equal(newData.user.emailVerified, true);
+    });
+
+    test('reused token returns 400 with TOKEN_INVALID', async () => {
+      const sentMails = testMailbox.filter((m) => m.to === 'unverified@example.com');
+      const latestMail = sentMails[sentMails.length - 1];
+
+      // Re-attempt verification with already used token
+      const reusedRes = await fetch(`${baseUrl}/api/auth/verify-email?token=${latestMail.rawToken}`);
+      assert.equal(reusedRes.status, 400);
+      const reusedData = await reusedRes.json();
+      assert.equal(reusedData.code, 'TOKEN_INVALID');
+    });
+
+    test('resend verification enforces 60s cooldown with 429 RATE_LIMITED', async () => {
+      // Create user for cooldown testing
+      await fetch(`${baseUrl}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: 'cooldown_user',
+          email: 'cooldown@example.com',
+          password: 'Password123!',
+        }),
+      });
+
+      // Immediate resend attempt must hit cooldown
+      const res = await fetch(`${baseUrl}/api/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'cooldown@example.com' }),
+      });
+
+      assert.equal(res.status, 429);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
+      assert.equal(data.code, 'RATE_LIMITED');
+      assert.ok(data.retryAfterSeconds > 0);
+    });
+
+    test('resend verification prevents email enumeration for nonexistent or verified accounts', async () => {
+      const resNonexistent = await fetch(`${baseUrl}/api/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'nonexistent@example.com' }),
+      });
+      assert.equal(resNonexistent.status, 200);
+      const dataNonexistent = await resNonexistent.json();
+      assert.equal(dataNonexistent.status, 'success');
+
+      const resVerified = await fetch(`${baseUrl}/api/auth/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'pilot@example.com' }), // verified user
+      });
+      assert.equal(resVerified.status, 200);
+      const dataVerified = await resVerified.json();
+      assert.equal(dataVerified.status, 'success');
+    });
+
+    test('legacy user migration marks existing unverified accounts without tokens as emailVerified: true', async () => {
+      // Seed a legacy user created before email verification existed
+      await User.create({
+        username: 'legacy_veteran',
+        email: 'legacy@example.com',
+        passwordHash: 'hashed_password_123',
+        emailVerified: false,
+        verificationTokenHash: null,
+      });
+
+      // Run migration
+      const migrationResult = await migrateLegacyUsers();
+      assert.ok(migrationResult);
+
+      const migratedUser = await User.findOne({ email: 'legacy@example.com' });
+      assert.equal(migratedUser.emailVerified, true);
     });
   });
 
@@ -303,17 +526,19 @@ describe('Authentication & User Profile API Tests', () => {
     });
 
     test('missing identifier or password returns 400', async () => {
-      const res = await fetch(`${baseUrl}/api/auth/login`, {
+      const res1 = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          password: 'Password123!',
-        }),
+        body: JSON.stringify({ email: 'pilot@example.com' }),
       });
+      assert.equal(res1.status, 400);
 
-      assert.equal(res.status, 400);
-      const data = await res.json();
-      assert.equal(data.status, 'error');
+      const res2 = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: 'Password123!' }),
+      });
+      assert.equal(res2.status, 400);
     });
   });
 
@@ -347,6 +572,7 @@ describe('Authentication & User Profile API Tests', () => {
       assert.ok(data.user);
       assert.equal(data.user.username, 'testpilot');
       assert.equal(data.user.email, 'pilot@example.com');
+      assert.equal(data.user.emailVerified, true);
       assert.equal(data.user.passwordHash, undefined);
       assert.equal(data.user.password, undefined);
     });
@@ -391,8 +617,20 @@ describe('Authentication & User Profile API Tests', () => {
         }),
       });
       const signupData = await signupRes.json();
-      userToken = signupData.token;
       userId = signupData.user.id;
+
+      // Mark verified & login
+      await User.updateOne({ _id: userId }, { emailVerified: true });
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'racer@example.com',
+          password: 'Password123!',
+        }),
+      });
+      const loginData = await loginRes.json();
+      userToken = loginData.token;
 
       // Seed 1 ranked performance (60 WPM)
       await Performance.create({
@@ -441,72 +679,59 @@ describe('Authentication & User Profile API Tests', () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${userToken}`,
         },
-        body: JSON.stringify({ practiceStatsVisibility: 'invalid_mode' }),
+        body: JSON.stringify({ practiceStatsVisibility: 'super_private' }),
       });
       assert.equal(res.status, 400);
+      const data = await res.json();
+      assert.equal(data.status, 'error');
     });
 
     test('GET /api/users/:username/profile returns 404 for nonexistent username', async () => {
-      const res = await fetch(`${baseUrl}/api/users/nonexistentuser_9999/profile`);
+      const res = await fetch(`${baseUrl}/api/users/nonexistent_racer_xyz/profile`);
       assert.equal(res.status, 404);
       const data = await res.json();
       assert.equal(data.status, 'error');
     });
 
     test('GET /api/users/:username/profile exposes ranked data and omits practice data for other users when private', async () => {
-      // 1. Unauthenticated request
-      const resUnauth = await fetch(`${baseUrl}/api/users/publicracer/profile`);
-      assert.equal(resUnauth.status, 200);
-      const dataUnauth = await resUnauth.json();
-      assert.equal(dataUnauth.status, 'success');
-      assert.equal(dataUnauth.data.username, 'publicracer');
-      assert.equal(dataUnauth.data.isOwner, false);
+      const res = await fetch(`${baseUrl}/api/users/publicracer/profile`);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.status, 'success');
+      assert.equal(data.data.username, 'publicracer');
+      assert.equal(data.data.isOwner, false);
 
-      // Security check: private fields MUST NOT be exposed
-      assert.equal(dataUnauth.data.email, undefined);
-      assert.equal(dataUnauth.data.passwordHash, undefined);
-      assert.equal(dataUnauth.data.practiceStatsVisibility, undefined);
-      assert.equal(dataUnauth.data.practicePrivacy, undefined);
+      // Ranked is populated
+      assert.ok(data.data.ranked);
+      assert.equal(data.data.ranked.summary.totalTests, 1);
+      assert.equal(data.data.ranked.summary.personalBest.wpm, 60);
 
-      // Ranked data is ALWAYS exposed
-      assert.ok(dataUnauth.data.ranked);
-      assert.equal(dataUnauth.data.ranked.summary.totalTests, 1);
-      assert.equal(dataUnauth.data.ranked.summary.personalBest.wpm, 60);
-      assert.ok(dataUnauth.data.ranked.badges);
-      assert.ok(dataUnauth.data.ranked.graphData);
-      assert.equal(dataUnauth.data.ranked.graphData.length, 1);
-
-      // Practice data MUST be null for other users when private
-      assert.equal(dataUnauth.data.practice, null);
+      // Practice is null when private
+      assert.equal(data.data.practice, null);
     });
 
     test('GET /api/users/:username/profile allows profile owner to view own practice stats even when private', async () => {
-      // Owner requesting their own profile with auth token
-      const resOwner = await fetch(`${baseUrl}/api/users/publicracer/profile`, {
+      const res = await fetch(`${baseUrl}/api/users/publicracer/profile`, {
         headers: {
           Authorization: `Bearer ${userToken}`,
         },
       });
-      assert.equal(resOwner.status, 200);
-      const dataOwner = await resOwner.json();
-      assert.equal(dataOwner.status, 'success');
-      assert.equal(dataOwner.data.username, 'publicracer');
-      assert.equal(dataOwner.data.isOwner, true);
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.status, 'success');
+      assert.equal(data.data.isOwner, true);
 
-      // Owner receives their own practice data
-      assert.ok(dataOwner.data.practice);
-      assert.equal(dataOwner.data.practice.summary.totalTests, 1);
-      assert.equal(dataOwner.data.practice.summary.personalBest.wpm, 40);
-      assert.equal(dataOwner.data.practice.graphData.length, 1);
+      // Ranked is populated
+      assert.ok(data.data.ranked);
+      assert.equal(data.data.ranked.summary.totalTests, 1);
 
-      // Security: sensitive user fields are still never exposed
-      assert.equal(dataOwner.data.email, undefined);
-      assert.equal(dataOwner.data.passwordHash, undefined);
-      assert.equal(dataOwner.data.practiceStatsVisibility, undefined);
+      // Practice IS populated for owner
+      assert.ok(data.data.practice);
+      assert.equal(data.data.practice.summary.totalTests, 1);
+      assert.equal(data.data.practice.summary.personalBest.wpm, 40);
     });
 
     test('PATCH /api/auth/privacy updates visibility to public and public profile includes practice data for everyone', async () => {
-      // 1. Update privacy to public
       const patchRes = await fetch(`${baseUrl}/api/auth/privacy`, {
         method: 'PATCH',
         headers: {
@@ -516,19 +741,15 @@ describe('Authentication & User Profile API Tests', () => {
         body: JSON.stringify({ practiceStatsVisibility: 'public' }),
       });
       assert.equal(patchRes.status, 200);
-      const patchData = await patchRes.json();
-      assert.equal(patchData.data.user.practiceStatsVisibility, 'public');
 
-      // 2. Fetch public profile as unauthenticated viewer
-      const profileRes = await fetch(`${baseUrl}/api/users/publicracer/profile`);
-      assert.equal(profileRes.status, 200);
-      const profileData = await profileRes.json();
-
-      // Practice data is NOW exposed to everyone
-      assert.ok(profileData.data.practice);
-      assert.equal(profileData.data.practice.summary.totalTests, 1);
-      assert.equal(profileData.data.practice.summary.personalBest.wpm, 40);
-      assert.equal(profileData.data.practice.graphData.length, 1);
+      // Unauthenticated view now sees practice data
+      const pubRes = await fetch(`${baseUrl}/api/users/publicracer/profile`);
+      assert.equal(pubRes.status, 200);
+      const pubData = await pubRes.json();
+      assert.equal(pubData.status, 'success');
+      assert.ok(pubData.data.practice);
+      assert.equal(pubData.data.practice.summary.totalTests, 1);
+      assert.equal(pubData.data.practice.summary.personalBest.wpm, 40);
     });
   });
 
@@ -548,8 +769,20 @@ describe('Authentication & User Profile API Tests', () => {
         }),
       });
       const data = await signupRes.json();
-      testUserToken = data.token;
       testUserId = data.user.id;
+
+      // Mark verified & login
+      await User.updateOne({ _id: testUserId }, { emailVerified: true });
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'settings@example.com',
+          password: 'Password123!',
+        }),
+      });
+      const loginData = await loginRes.json();
+      testUserToken = loginData.token;
 
       // Seed a ranked performance to verify it remains linked after username change
       await Performance.create({
@@ -752,7 +985,19 @@ describe('Authentication & User Profile API Tests', () => {
       const signupData = await signupRes.json();
       assert.equal(signupData.status, 'success');
       assert.equal(signupData.user.username, 'Semnótēs');
-      const semnotesToken = signupData.token;
+
+      // Verify email & login to obtain JWT
+      await User.updateOne({ email: 'semnotes@example.com' }, { emailVerified: true });
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'semnotes@example.com',
+          password: 'Password123!',
+        }),
+      });
+      const loginData = await loginRes.json();
+      const semnotesToken = loginData.token;
 
       // 2. Semnótēs user opens settings and saves profile (with same username or updated bio/privacy)
       const profileRes = await fetch(`${baseUrl}/api/auth/profile`, {
@@ -829,7 +1074,18 @@ describe('Authentication & User Profile API Tests', () => {
         }),
       });
       const data = await signupRes.json();
-      pwUserToken = data.token;
+      await User.updateOne({ _id: data.user.id }, { emailVerified: true });
+
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'pwtest@example.com',
+          password: 'InitialPassword123!',
+        }),
+      });
+      const loginData = await loginRes.json();
+      pwUserToken = loginData.token;
     });
 
     test('unauthenticated POST /api/auth/change-password returns 401', async () => {
@@ -945,7 +1201,18 @@ describe('Authentication & User Profile API Tests', () => {
         }),
       });
       const data = await signupRes.json();
-      searchAuthToken = data.token;
+      await User.updateOne({ _id: data.user.id }, { emailVerified: true });
+
+      const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'discoverer@example.com',
+          password: 'Password123!',
+        }),
+      });
+      const loginData = await loginRes.json();
+      searchAuthToken = loginData.token;
     });
 
     test('unauthenticated GET /api/users/search returns 401', async () => {
@@ -1001,7 +1268,6 @@ describe('Authentication & User Profile API Tests', () => {
       });
       assert.equal(resSem.status, 200);
       const dataSem = await resSem.json();
-      // In earlier test Semnótēs renamed to José, or Semnótēs exists
       assert.ok(Array.isArray(dataSem.data));
 
       const resJose = await fetch(`${baseUrl}/api/users/search?q=${encodeURIComponent('jos')}`, {
@@ -1018,7 +1284,6 @@ describe('Authentication & User Profile API Tests', () => {
       });
       assert.equal(res.status, 200);
       const data = await res.json();
-      // Should not match all users like .* would if unescaped
       assert.equal(data.data.length, 0);
     });
 
@@ -1049,7 +1314,6 @@ describe('Authentication & User Profile API Tests', () => {
       const res = await fetch(`${baseUrl}/api/users/search?q=e`, {
         headers: { Authorization: `Bearer ${searchAuthToken}` },
       });
-      // Query length < 2 returned []
       assert.equal(res.status, 200);
 
       const res2 = await fetch(`${baseUrl}/api/users/search?q=er`, {

@@ -2,6 +2,8 @@ import express from 'express';
 import {
   signup,
   login,
+  verifyEmail,
+  resendVerification,
   getMe,
   updateProfile,
   changePassword,
@@ -14,6 +16,9 @@ const router = express.Router();
 // Public routes
 router.post('/signup', signup);
 router.post('/login', login);
+router.get('/verify-email', verifyEmail);
+router.post('/verify-email', verifyEmail);
+router.post('/resend-verification', resendVerification);
 
 // Protected routes
 router.get('/me', authenticate, getMe);

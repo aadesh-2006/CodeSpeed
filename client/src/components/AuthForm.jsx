@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api, setToken } from '../services/api';
 
 export function AuthForm({ onAuthSuccess }) {
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'verify-notice'
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -10,15 +10,54 @@ export function AuthForm({ onAuthSuccess }) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // Email verification notice state
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState('');
+  const [showUnverifiedWarning, setShowUnverifiedWarning] = useState(false);
+
+  // Resend cooldown countdown
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
+
   const switchMode = (newMode) => {
     setMode(newMode);
     setError(null);
     setShowPassword(false);
+    setShowUnverifiedWarning(false);
+    setResendSuccess('');
+  };
+
+  const handleResendFromNotice = async () => {
+    const targetEmail = pendingEmail || email.trim();
+    if (!targetEmail) return;
+
+    setResendLoading(true);
+    setResendSuccess('');
+    setError(null);
+
+    try {
+      const res = await api.resendVerification(targetEmail);
+      setResendSuccess(res?.message || 'A fresh verification link has been sent to your email.');
+      setResendCooldown(60);
+    } catch (err) {
+      setError(err.message || 'Failed to resend verification link.');
+    } finally {
+      setResendLoading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setShowUnverifiedWarning(false);
+    setResendSuccess('');
 
     // Basic frontend validations
     if (!email.trim() || !password) {
@@ -44,34 +83,99 @@ export function AuthForm({ onAuthSuccess }) {
     setLoading(true);
 
     try {
-      let res;
       if (mode === 'signup') {
-        res = await api.signup({
+        const res = await api.signup({
           username: username.trim(),
           email: email.trim(),
           password,
         });
+
+        if (res?.requiresVerification) {
+          setPendingEmail(res.email || email.trim());
+          setMode('verify-notice');
+          setResendCooldown(60);
+          return;
+        }
+
+        if (res.token && res.user) {
+          setToken(res.token);
+          onAuthSuccess(res.user, res.token);
+        } else {
+          setError('Unexpected response from server.');
+        }
       } else {
-        res = await api.login({
+        const res = await api.login({
           identifier: email.trim(),
           email: email.trim(),
           password,
         });
-      }
 
-      if (res.token && res.user) {
-        setToken(res.token);
-        onAuthSuccess(res.user, res.token);
-      } else {
-        setError('Unexpected response from server.');
+        if (res.token && res.user) {
+          setToken(res.token);
+          onAuthSuccess(res.user, res.token);
+        } else {
+          setError('Unexpected response from server.');
+        }
       }
     } catch (err) {
+      if (err.message && err.message.toLowerCase().includes('verify your email')) {
+        setShowUnverifiedWarning(true);
+        setPendingEmail(email.trim());
+      }
       setError(err.message || 'Authentication failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
+  // 1. Dedicated Verification Notice Screen after Signup
+  if (mode === 'verify-notice') {
+    return (
+      <div className="auth-card">
+        <div className="verify-notice-card">
+          <div className="verify-icon-circle info">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+              <polyline points="22,6 12,13 2,6" />
+            </svg>
+          </div>
+
+          <h2 className="verify-title">Verify Your Email</h2>
+          <p className="verify-subtitle">
+            We've sent a verification link to <strong className="highlight-text">{pendingEmail}</strong>.
+            Please click the link in your email to activate your account.
+          </p>
+
+          {resendSuccess && <div className="notification notification-success">{resendSuccess}</div>}
+          {error && <div className="notification notification-error">{error}</div>}
+
+          <div className="verify-notice-actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn-block"
+              onClick={handleResendFromNotice}
+              disabled={resendLoading || resendCooldown > 0}
+            >
+              {resendLoading
+                ? 'Sending...'
+                : resendCooldown > 0
+                ? `Resend available in ${resendCooldown}s`
+                : 'Resend Verification Email'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-block"
+              onClick={() => switchMode('login')}
+            >
+              Proceed to Log In &rarr;
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Normal Login & Signup Form
   return (
     <div className="auth-card">
       <div className="auth-tabs">
@@ -97,9 +201,29 @@ export function AuthForm({ onAuthSuccess }) {
         {error && (
           <div className="auth-error-banner" role="alert">
             <span className="error-icon">&times;</span>
-            <span>{error}</span>
+            <div className="auth-error-content">
+              <span>{error}</span>
+              {showUnverifiedWarning && (
+                <div className="unverified-resend-row">
+                  <button
+                    type="button"
+                    className="link-btn unverified-resend-btn"
+                    onClick={handleResendFromNotice}
+                    disabled={resendLoading || resendCooldown > 0}
+                  >
+                    {resendLoading
+                      ? 'Sending...'
+                      : resendCooldown > 0
+                      ? `Resend available in ${resendCooldown}s`
+                      : 'Resend verification link'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
+
+        {resendSuccess && <div className="notification notification-success">{resendSuccess}</div>}
 
         {mode === 'signup' && (
           <div className="form-group">

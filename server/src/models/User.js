@@ -26,6 +26,22 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Password hash is required'],
     },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    verificationTokenHash: {
+      type: String,
+      default: null,
+    },
+    verificationTokenExpires: {
+      type: Date,
+      default: null,
+    },
+    lastVerificationEmailSentAt: {
+      type: Date,
+      default: null,
+    },
     bio: {
       type: String,
       trim: true,
@@ -52,13 +68,15 @@ const userSchema = new mongoose.Schema(
     },
   },
   {
-    // Configure toJSON to strip passwordHash and __v so sensitive data is never serialized
+    // Configure toJSON to strip passwordHash, tokens, and __v so sensitive data is never serialized
     toJSON: {
       transform: (doc, ret) => {
         ret.id = ret._id ? ret._id.toString() : undefined;
         delete ret._id;
         delete ret.__v;
         delete ret.passwordHash;
+        delete ret.verificationTokenHash;
+        delete ret.verificationTokenExpires;
         return ret;
       },
     },

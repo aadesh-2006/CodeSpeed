@@ -81,6 +81,8 @@ export const api = {
   updatePrivacy: (privacyPayload) => request('/api/auth/privacy', { method: 'PATCH', body: JSON.stringify(privacyPayload) }),
   getPublicProfile: (username) => request(`/api/users/${encodeURIComponent(username)}/profile`, { method: 'GET' }),
   searchUsers: (query) => request(`/api/users/search?q=${encodeURIComponent(query || '')}`, { method: 'GET' }),
+  verifyEmail: (token) => request(`/api/auth/verify-email?token=${encodeURIComponent(token || '')}`, { method: 'GET' }),
+  resendVerification: (email) => request('/api/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email }) }),
 
   // Performance persistence & history
   savePerformance: (performanceData) =>
