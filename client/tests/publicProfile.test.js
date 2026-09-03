@@ -27,7 +27,7 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
     ],
   };
 
-  const mockPublicPracticeData = {
+  const mockPracticeData = {
     summary: {
       totalTests: 40,
       totalTimeTypedSeconds: 2400,
@@ -48,22 +48,44 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
     ],
   };
 
-  const mockPublicProfilePublicPractice = {
-    username: 'speedcoder',
+  // 1. Own profile + Practice private
+  const mockOwnProfilePracticePrivate = {
+    username: 'myuser',
     memberSince: '2026-08-01T00:00:00.000Z',
+    isOwner: true,
     ranked: mockRankedData,
-    practice: mockPublicPracticeData,
+    practice: mockPracticeData,
   };
 
-  const mockPublicProfilePrivatePractice = {
-    username: 'speedcoder',
+  // 2. Own profile + Practice public
+  const mockOwnProfilePracticePublic = {
+    username: 'myuser',
     memberSince: '2026-08-01T00:00:00.000Z',
+    isOwner: true,
     ranked: mockRankedData,
-    practice: null, // Private practice
+    practice: mockPracticeData,
+  };
+
+  // 3. Other profile + Practice private
+  const mockOtherProfilePracticePrivate = {
+    username: 'otheruser',
+    memberSince: '2026-08-01T00:00:00.000Z',
+    isOwner: false,
+    ranked: mockRankedData,
+    practice: null, // Private practice hidden from others
+  };
+
+  // 4. Other profile + Practice public
+  const mockOtherProfilePracticePublic = {
+    username: 'otheruser',
+    memberSince: '2026-08-01T00:00:00.000Z',
+    isOwner: false,
+    ranked: mockRankedData,
+    practice: mockPracticeData,
   };
 
   test('Public profile data separates Ranked and Practice statistics completely', () => {
-    const profile = mockPublicProfilePublicPractice;
+    const profile = mockOwnProfilePracticePublic;
 
     // Ranked metrics
     assert.equal(profile.ranked.summary.totalTests, 15);
@@ -82,39 +104,48 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
   });
 
   test('Public profile defaults to Ranked mode', () => {
-    let activeMode = 'ranked';
-    assert.equal(activeMode, 'ranked');
+    const defaultMode = 'ranked';
+    assert.equal(defaultMode, 'ranked');
   });
 
-  test('Switching to Practice displays Practice statistics when practice is public', () => {
-    const profile = mockPublicProfilePublicPractice;
-    let activeMode = 'ranked';
-
-    // Switch to practice
-    activeMode = 'practice';
-    assert.equal(activeMode, 'practice');
-
-    const displayedStats = activeMode === 'ranked' ? profile.ranked.summary : profile.practice?.summary;
-    assert.equal(displayedStats.personalBest.wpm, 78);
-    assert.equal(displayedStats.totalTests, 40);
-    assert.equal(displayedStats.averageWpm, 65);
+  test('Case 1: Own profile + Practice private -> Practice stats are visible to owner', () => {
+    const profile = mockOwnProfilePracticePrivate;
+    assert.equal(profile.isOwner, true);
+    assert.ok(profile.practice, 'Owner must receive practice data even when private');
+    assert.equal(profile.practice.summary.totalTests, 40);
+    assert.equal(profile.practice.summary.personalBest.wpm, 78);
+    assert.equal(profile.practice.summary.averageWpm, 65);
+    assert.equal(profile.practice.summary.averageAccuracy, 94.8);
   });
 
-  test('Switching back to Ranked restores Ranked statistics', () => {
-    const profile = mockPublicProfilePublicPractice;
-    let activeMode = 'practice';
+  test('Case 2: Own profile + Practice public -> Practice stats are visible to owner', () => {
+    const profile = mockOwnProfilePracticePublic;
+    assert.equal(profile.isOwner, true);
+    assert.ok(profile.practice);
+    assert.equal(profile.practice.summary.totalTests, 40);
+  });
 
-    // Switch back to ranked
-    activeMode = 'ranked';
-    assert.equal(activeMode, 'ranked');
+  test('Case 3: Other user profile + Practice private -> Practice stats are hidden from other users', () => {
+    const profile = mockOtherProfilePracticePrivate;
+    assert.equal(profile.isOwner, false);
+    assert.equal(profile.practice, null, 'Other users must not receive private practice data');
 
-    const displayedStats = activeMode === 'ranked' ? profile.ranked.summary : profile.practice?.summary;
-    assert.equal(displayedStats.personalBest.wpm, 104);
-    assert.equal(displayedStats.totalTests, 15);
+    // Ranked data is still public
+    assert.ok(profile.ranked);
+    assert.equal(profile.ranked.summary.totalTests, 15);
+    assert.equal(profile.ranked.summary.personalBest.wpm, 104);
+  });
+
+  test('Case 4: Other user profile + Practice public -> Practice stats are visible to other users', () => {
+    const profile = mockOtherProfilePracticePublic;
+    assert.equal(profile.isOwner, false);
+    assert.ok(profile.practice);
+    assert.equal(profile.practice.summary.totalTests, 40);
+    assert.equal(profile.practice.summary.personalBest.wpm, 78);
   });
 
   test('Ranked badges are only displayed in Ranked mode and never in Practice mode', () => {
-    const profile = mockPublicProfilePublicPractice;
+    const profile = mockOwnProfilePracticePublic;
 
     // In Ranked mode, badges exist
     const rankedBadges = profile.ranked.badges;
@@ -125,27 +156,15 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
     assert.equal(practiceHasBadges, false);
   });
 
-  test('Private practice profile: practice data is null and private state is flagged', () => {
-    const profile = mockPublicProfilePrivatePractice;
-
-    // Ranked data remains accessible
-    assert.ok(profile.ranked);
-    assert.equal(profile.ranked.summary.totalTests, 15);
-    assert.equal(profile.ranked.summary.personalBest.wpm, 104);
-
-    // Practice data is strictly null
-    assert.equal(profile.practice, null);
-
-    // Verification that UI displays private message
-    const isPracticePrivate = profile.practice === null;
-    assert.equal(isPracticePrivate, true);
-  });
-
   test('Security audit: public profile object never exposes private fields or settings', () => {
-    const profile1 = mockPublicProfilePublicPractice;
-    const profile2 = mockPublicProfilePrivatePractice;
+    const profiles = [
+      mockOwnProfilePracticePrivate,
+      mockOwnProfilePracticePublic,
+      mockOtherProfilePracticePrivate,
+      mockOtherProfilePracticePublic,
+    ];
 
-    for (const p of [profile1, profile2]) {
+    for (const p of profiles) {
       assert.equal(p.email, undefined);
       assert.equal(p.passwordHash, undefined);
       assert.equal(p.practiceStatsVisibility, undefined);

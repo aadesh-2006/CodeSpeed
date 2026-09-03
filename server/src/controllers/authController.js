@@ -302,6 +302,9 @@ export const getPublicProfile = async (req, res) => {
       });
     }
 
+    // Check if the requester is the profile owner via authenticated JWT
+    const isOwner = Boolean(req.user?.id && req.user.id.toString() === user._id.toString());
+
     // 1. Ranked Data (Always Public)
     const rankedDocs = await Performance.find({ userId: user._id, mode: 'ranked' }).sort({ createdAt: 1 });
     const rankedBadges = evaluateBadges(rankedDocs);
@@ -352,9 +355,9 @@ export const getPublicProfile = async (req, res) => {
       createdAt: p.createdAt,
     }));
 
-    // 2. Practice Data (ONLY if user.practiceStatsVisibility === 'public')
+    // 2. Practice Data: Included if requester is the profile owner OR user has public visibility
     let practiceData = null;
-    if (user.practiceStatsVisibility === 'public') {
+    if (isOwner || user.practiceStatsVisibility === 'public') {
       const practiceDocs = await Performance.find({
         userId: user._id,
         $or: [{ mode: 'practice' }, { mode: { $exists: false } }],
@@ -417,6 +420,7 @@ export const getPublicProfile = async (req, res) => {
       data: {
         username: user.username,
         memberSince: user.createdAt,
+        isOwner,
         ranked: {
           summary: rankedSummary,
           badges: rankedBadges,

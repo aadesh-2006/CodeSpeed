@@ -453,33 +453,59 @@ describe('Authentication & User Profile API Tests', () => {
       assert.equal(data.status, 'error');
     });
 
-    test('GET /api/users/:username/profile exposes ranked data and omits private practice data when privacy is private', async () => {
-      const res = await fetch(`${baseUrl}/api/users/publicracer/profile`);
-      assert.equal(res.status, 200);
-      const data = await res.json();
-      assert.equal(data.status, 'success');
-      assert.equal(data.data.username, 'publicracer');
-      assert.ok(data.data.memberSince);
+    test('GET /api/users/:username/profile exposes ranked data and omits practice data for other users when private', async () => {
+      // 1. Unauthenticated request
+      const resUnauth = await fetch(`${baseUrl}/api/users/publicracer/profile`);
+      assert.equal(resUnauth.status, 200);
+      const dataUnauth = await resUnauth.json();
+      assert.equal(dataUnauth.status, 'success');
+      assert.equal(dataUnauth.data.username, 'publicracer');
+      assert.equal(dataUnauth.data.isOwner, false);
 
       // Security check: private fields MUST NOT be exposed
-      assert.equal(data.data.email, undefined);
-      assert.equal(data.data.passwordHash, undefined);
-      assert.equal(data.data.practiceStatsVisibility, undefined);
-      assert.equal(data.data.practicePrivacy, undefined);
+      assert.equal(dataUnauth.data.email, undefined);
+      assert.equal(dataUnauth.data.passwordHash, undefined);
+      assert.equal(dataUnauth.data.practiceStatsVisibility, undefined);
+      assert.equal(dataUnauth.data.practicePrivacy, undefined);
 
       // Ranked data is ALWAYS exposed
-      assert.ok(data.data.ranked);
-      assert.equal(data.data.ranked.summary.totalTests, 1);
-      assert.equal(data.data.ranked.summary.personalBest.wpm, 60);
-      assert.ok(data.data.ranked.badges);
-      assert.ok(data.data.ranked.graphData);
-      assert.equal(data.data.ranked.graphData.length, 1);
+      assert.ok(dataUnauth.data.ranked);
+      assert.equal(dataUnauth.data.ranked.summary.totalTests, 1);
+      assert.equal(dataUnauth.data.ranked.summary.personalBest.wpm, 60);
+      assert.ok(dataUnauth.data.ranked.badges);
+      assert.ok(dataUnauth.data.ranked.graphData);
+      assert.equal(dataUnauth.data.ranked.graphData.length, 1);
 
-      // Practice data MUST be null when private
-      assert.equal(data.data.practice, null);
+      // Practice data MUST be null for other users when private
+      assert.equal(dataUnauth.data.practice, null);
     });
 
-    test('PATCH /api/auth/privacy updates visibility to public and public profile includes practice data', async () => {
+    test('GET /api/users/:username/profile allows profile owner to view own practice stats even when private', async () => {
+      // Owner requesting their own profile with auth token
+      const resOwner = await fetch(`${baseUrl}/api/users/publicracer/profile`, {
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+        },
+      });
+      assert.equal(resOwner.status, 200);
+      const dataOwner = await resOwner.json();
+      assert.equal(dataOwner.status, 'success');
+      assert.equal(dataOwner.data.username, 'publicracer');
+      assert.equal(dataOwner.data.isOwner, true);
+
+      // Owner receives their own practice data
+      assert.ok(dataOwner.data.practice);
+      assert.equal(dataOwner.data.practice.summary.totalTests, 1);
+      assert.equal(dataOwner.data.practice.summary.personalBest.wpm, 40);
+      assert.equal(dataOwner.data.practice.graphData.length, 1);
+
+      // Security: sensitive user fields are still never exposed
+      assert.equal(dataOwner.data.email, undefined);
+      assert.equal(dataOwner.data.passwordHash, undefined);
+      assert.equal(dataOwner.data.practiceStatsVisibility, undefined);
+    });
+
+    test('PATCH /api/auth/privacy updates visibility to public and public profile includes practice data for everyone', async () => {
       // 1. Update privacy to public
       const patchRes = await fetch(`${baseUrl}/api/auth/privacy`, {
         method: 'PATCH',
@@ -493,12 +519,12 @@ describe('Authentication & User Profile API Tests', () => {
       const patchData = await patchRes.json();
       assert.equal(patchData.data.user.practiceStatsVisibility, 'public');
 
-      // 2. Fetch public profile again
+      // 2. Fetch public profile as unauthenticated viewer
       const profileRes = await fetch(`${baseUrl}/api/users/publicracer/profile`);
       assert.equal(profileRes.status, 200);
       const profileData = await profileRes.json();
 
-      // Practice data is NOW exposed
+      // Practice data is NOW exposed to everyone
       assert.ok(profileData.data.practice);
       assert.equal(profileData.data.practice.summary.totalTests, 1);
       assert.equal(profileData.data.practice.summary.personalBest.wpm, 40);

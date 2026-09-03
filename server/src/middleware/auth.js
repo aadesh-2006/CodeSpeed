@@ -75,4 +75,39 @@ export const authenticate = async (req, res, next) => {
   }
 };
 
+/**
+ * Optional authentication middleware.
+ * If Authorization header with valid JWT is provided, attaches user context to req.user.
+ * If missing, invalid, or expired, proceeds without req.user without rejecting the request.
+ */
+export const optionalAuthenticate = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret || !token) {
+      return next();
+    }
+
+    try {
+      const decoded = jwt.verify(token, jwtSecret);
+      if (decoded && decoded.id) {
+        req.user = {
+          id: decoded.id.toString(),
+        };
+      }
+    } catch {
+      // Non-fatal: unauthenticated viewer
+    }
+    next();
+  } catch {
+    next();
+  }
+};
+
 export default authenticate;
+
