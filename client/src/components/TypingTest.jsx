@@ -70,7 +70,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
 
   // Live character comparison with whitespace tolerance and language awareness
   const comparison = compareCharacters(targetCode, typedCode, { language });
-  const liveWpm = calculateWPM(comparison.correctCount, elapsedSeconds);
+  const liveWpm = calculateWPM(comparison.meaningfulCorrectCount || comparison.correctCount, elapsedSeconds);
   const liveAccuracy = calculateAccuracy(comparison.correctCount, comparison.totalTyped);
 
   // Auto-finish if full snippet is correctly typed
@@ -85,7 +85,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
       clearInterval(timerRef.current);
     }
     const finalElapsed = Math.max(1, elapsedSeconds || durationSeconds - timeLeft);
-    const finalWpm = calculateWPM(comparison.correctCount, finalElapsed);
+    const finalWpm = calculateWPM(comparison.meaningfulCorrectCount || comparison.correctCount, finalElapsed);
     const finalAccuracy = calculateAccuracy(comparison.correctCount, comparison.totalTyped);
 
     onFinish({

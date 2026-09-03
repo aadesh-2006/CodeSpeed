@@ -1,13 +1,19 @@
 /**
- * Pure calculation and ergonomics utilities for the CodeSpeed typing engine.
+ * Pure calculation, indentation, and syntax-aware comparison utilities
+ * for the CodeSpeed typing engine.
+ *
+ * Strictly separates:
+ * 1. Editor Indentation (Auto-handled on Enter, does not inflate WPM)
+ * 2. Optional Syntax Whitespace (Tolerated around operators, delimiters, braces, etc.)
+ * 3. Required Token-Separating Whitespace (Must be typed between lexical tokens/words)
  */
 
 /**
  * Calculate Words Per Minute (WPM).
  * 1 word = 5 characters.
- * WPM = (correctCharacters / 5) / elapsedMinutes
+ * WPM = (meaningfulCorrectChars / 5) / elapsedMinutes
  *
- * @param {number} correctChars - Total number of correctly typed characters
+ * @param {number} correctChars - Number of meaningful correctly typed characters
  * @param {number} elapsedSeconds - Total elapsed time in seconds
  * @returns {number} Rounded WPM
  */
@@ -56,7 +62,7 @@ export function formatTime(totalSeconds) {
 
 /**
  * Analyze code characters to identify string literals, comments, indentation,
- * and optional stylistic whitespace vs structural whitespace.
+ * and optional stylistic whitespace vs mandatory token-separating whitespace.
  *
  * @param {string} code - Target code string
  * @param {string} language - Programming language (e.g. 'java', 'javascript', 'python')
@@ -140,16 +146,20 @@ export function analyzeCodeContext(code, language = '') {
     let isOptional = false;
     if (char === ' ' && !isString && !isComment) {
       if (isIndent) {
-        // In Python, leading indentation defines block scope and is required.
-        // In C-like languages, leading indent is auto-inserted or stylistic.
+        // Leading line indent in C-like languages is handled by editor auto-indent,
+        // but in Python leading indentation is structural syntax.
         isOptional = !isPython;
       } else {
         const prevNonSpace = findPrevNonSpace(code, i);
         const nextNonSpace = findNextNonSpace(code, i);
 
         if (prevNonSpace && nextNonSpace) {
+          // Token-separating whitespace: between two word/identifier characters (e.g. "public static", "int x")
           const isWordChar = (c) => /[a-zA-Z0-9_$]/.test(c);
           const isBetweenWords = isWordChar(prevNonSpace) && isWordChar(nextNonSpace);
+
+          // If between two words/identifiers, it is REQUIRED (NOT optional).
+          // If adjacent to operators/delimiters/punctuation (e.g. `+`, `=`, `(`, `)`, `{`, `,`, `;`), it is optional.
           isOptional = !isBetweenWords;
         } else {
           isOptional = true;
@@ -187,24 +197,25 @@ function findNextNonSpace(str, index) {
 }
 
 /**
- * Check if a space typed by the user is an optional stylistic space (e.g. after comma or operator).
+ * Check if a space typed by the user is an optional stylistic space (e.g. after comma or around operator).
  */
 function isUserOptionalSpace(typed, index) {
   const prevChar = findPrevNonSpace(typed, index);
   const nextChar = findNextNonSpace(typed, index);
   if (!prevChar || !nextChar) return true;
   const isWordChar = (c) => /[a-zA-Z0-9_$]/.test(c);
+  // If user typed a space between two words (e.g. "public static"), that's a required space, not optional skipping.
   return !(isWordChar(prevChar) && isWordChar(nextChar));
 }
 
 /**
- * Compare user input against target snippet with whitespace tolerance
- * and syntax strictness.
+ * Compare user input against target snippet with whitespace tolerance for syntax
+ * and strictness for required token-separating spaces.
  *
  * @param {string} targetCode - The full code snippet to be typed
  * @param {string} typedCode - The text typed by the user so far
- * @param {object} options - Optional configuration { language }
- * @returns {object} Comparison details: correctCount, incorrectCount, totalTyped, charStatuses, isComplete
+ * @param {object} options - Optional configuration { language, autoIndentCount }
+ * @returns {object} Comparison details: correctCount, meaningfulCorrectCount, incorrectCount, totalTyped, charStatuses, isComplete
  */
 export function compareCharacters(targetCode, typedCode, options = {}) {
   const target = targetCode || '';
@@ -214,6 +225,7 @@ export function compareCharacters(targetCode, typedCode, options = {}) {
   if (!target) {
     return {
       correctCount: 0,
+      meaningfulCorrectCount: 0,
       incorrectCount: typed.length,
       totalTyped: typed.length,
       currentPosition: 0,
@@ -228,6 +240,7 @@ export function compareCharacters(targetCode, typedCode, options = {}) {
   let typedIndex = 0;
 
   let correctCount = 0;
+  let meaningfulCorrectCount = 0;
   let incorrectCount = 0;
 
   const charStatuses = new Array(target.length);
@@ -235,18 +248,24 @@ export function compareCharacters(targetCode, typedCode, options = {}) {
   while (targetIndex < target.length && typedIndex < typed.length) {
     const tChar = target[targetIndex];
     const uChar = typed[typedIndex];
+    const ctx = context[targetIndex];
 
     // 1. Exact match
     if (tChar === uChar) {
       charStatuses[targetIndex] = { char: tChar, status: 'correct' };
       correctCount++;
+      // Count as meaningful typed character if not auto-indent leading space
+      if (!ctx?.isIndent) {
+        meaningfulCorrectCount++;
+      }
       targetIndex++;
       typedIndex++;
       continue;
     }
 
-    // 2. Target has optional whitespace that user skipped
-    if (tChar === ' ' && context[targetIndex]?.isOptional) {
+    // 2. Target has optional whitespace that user omitted
+    // ONLY allowed if ctx.isOptional is TRUE (i.e. NOT between two word tokens, NOT in string, NOT in comment)
+    if (tChar === ' ' && ctx?.isOptional) {
       charStatuses[targetIndex] = { char: tChar, status: 'correct' };
       correctCount++;
       targetIndex++;
@@ -259,7 +278,7 @@ export function compareCharacters(targetCode, typedCode, options = {}) {
       continue;
     }
 
-    // 4. Real mismatch / syntax error
+    // 4. Real mismatch / missing required token-separating space / wrong character
     charStatuses[targetIndex] = {
       char: tChar,
       typedChar: uChar,
@@ -283,7 +302,7 @@ export function compareCharacters(targetCode, typedCode, options = {}) {
 
   const currentPosition = targetIndex;
 
-  // Set current cursor position
+  // Set current cursor position in snippet
   if (targetIndex < target.length) {
     charStatuses[targetIndex] = {
       char: target[targetIndex],
@@ -313,6 +332,7 @@ export function compareCharacters(targetCode, typedCode, options = {}) {
 
   return {
     correctCount,
+    meaningfulCorrectCount,
     incorrectCount,
     totalTyped: typed.length,
     currentPosition,
@@ -337,7 +357,7 @@ export function getNextLineIndent(targetCode, currentTypedCode, language = '') {
   const currentLineIndex = typedLines.length - 1;
   const nextLineIndex = currentLineIndex + 1;
 
-  // 1. If target snippet has a next line, extract its leading indentation
+  // 1. If target snippet has a next line, extract its established leading indentation
   if (nextLineIndex < targetLines.length) {
     const nextTargetLine = targetLines[nextLineIndex];
     const match = nextTargetLine.match(/^[ \t]*/);
@@ -346,12 +366,12 @@ export function getNextLineIndent(targetCode, currentTypedCode, language = '') {
     }
   }
 
-  // 2. Fallback to syntax-based indentation rule
+  // 2. Fallback to syntax-based 2-space indentation rule
   return getSyntaxIndentation(currentTypedCode, language);
 }
 
 /**
- * Pure rule-based indentation calculator.
+ * Pure rule-based indentation calculator using 2 spaces per level.
  *
  * @param {string} codeSoFar - Code typed so far
  * @param {string} language - Programming language
@@ -365,7 +385,7 @@ export function getSyntaxIndentation(codeSoFar, language = '') {
 
   const prevIndentMatch = lastLine.match(/^[ \t]*/);
   const prevIndent = prevIndentMatch ? prevIndentMatch[0] : '';
-  const indentUnit = '    '; // 4 spaces default
+  const indentUnit = '  '; // 2 spaces per level
 
   if (lang === 'python') {
     if (trimmed.endsWith(':')) {
@@ -388,5 +408,5 @@ export function getSyntaxIndentation(codeSoFar, language = '') {
     if (codeSoFar[i] === '}') openBraces--;
   }
 
-  return ' '.repeat(Math.max(0, openBraces) * 4);
+  return ' '.repeat(Math.max(0, openBraces) * 2);
 }
