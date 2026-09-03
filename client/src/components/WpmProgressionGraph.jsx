@@ -100,8 +100,12 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
           >
             <defs>
               <linearGradient id="wpmAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.25" />
-                <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
+                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+              </linearGradient>
+              <linearGradient id="wpmAreaGradientRanked" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#f97316" stopOpacity="0.22" />
+                <stop offset="100%" stopColor="#f97316" stopOpacity="0.0" />
               </linearGradient>
             </defs>
 
@@ -160,7 +164,7 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
 
             {/* Area Fill Gradient (2+ points) */}
             {points.length >= 2 && (
-              <path d={areaPath} fill="url(#wpmAreaGradient)" className="chart-area-fill" />
+              <path d={areaPath} className="chart-area-fill" />
             )}
 
             {/* Line Path (2+ points) */}
@@ -227,7 +231,7 @@ export function WpmProgressionGraph({ graphData = [], loading = false, totalCoun
               <div className="tooltip-stats">
                 <div className="tooltip-stat">
                   <span className="tooltip-lbl">WPM:</span>
-                  <strong className="tooltip-val text-cyan">{hoveredPoint.wpm}</strong>
+                  <strong className="tooltip-val text-blue">{hoveredPoint.wpm}</strong>
                 </div>
                 <div className="tooltip-stat">
                   <span className="tooltip-lbl">Accuracy:</span>
