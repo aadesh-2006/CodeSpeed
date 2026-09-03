@@ -153,7 +153,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="header">
-        <div className="badge">Milestone 5 &bull; Performance History</div>
+        <div className="badge">Milestone 6 &bull; Performance Sorting</div>
       </header>
 
       <main className="hero">
@@ -255,7 +255,7 @@ function App() {
             </span>
           </div>
           <p className="milestone-note">
-            Milestone 5 Performance History active. View and filter your recorded typing tests by language and duration.
+            Milestone 6 Performance Sorting active. Sort your recorded typing tests by Newest, WPM: High &rarr; Low, and WPM: Low &rarr; High with combinable language and duration filters.
           </p>
         </div>
       </main>

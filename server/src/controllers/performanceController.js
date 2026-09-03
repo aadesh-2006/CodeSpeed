@@ -4,6 +4,12 @@ import Performance, {
   VALID_TIMERS,
 } from '../models/Performance.js';
 
+export const SORT_OPTIONS = {
+  newest: { createdAt: -1 },
+  wpm_desc: { wpm: -1, createdAt: -1 },
+  wpm_asc: { wpm: 1, createdAt: -1 },
+};
+
 /**
  * Controller to record a completed typing performance.
  * Derives user identity exclusively from verified JWT (req.user.id).
@@ -158,7 +164,7 @@ export const createPerformance = async (req, res) => {
 /**
  * Controller to retrieve an authenticated user's performance history.
  * Supports combinable server-side filtering by language and timerSeconds,
- * with scalable pagination and default newest-first ordering.
+ * WPM sorting (newest, wpm_desc, wpm_asc), and scalable pagination.
  */
 export const getPerformances = async (req, res) => {
   try {
@@ -170,7 +176,7 @@ export const getPerformances = async (req, res) => {
       });
     }
 
-    const { language, timerSeconds, page, limit } = req.query || {};
+    const { language, timerSeconds, sort, page, limit } = req.query || {};
 
     const query = { userId };
 
@@ -198,18 +204,27 @@ export const getPerformances = async (req, res) => {
       query.timerSeconds = parsedTimer;
     }
 
-    // 3. Pagination setup
+    // 3. Sort configuration validation
+    let sortConfig = SORT_OPTIONS.newest;
+    if (sort !== undefined && sort !== null && sort !== '') {
+      const normSort = sort.toLowerCase().trim();
+      if (!SORT_OPTIONS[normSort]) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Invalid sort option: '${sort}'. Must be one of: ${Object.keys(SORT_OPTIONS).join(', ')}.`,
+        });
+      }
+      sortConfig = SORT_OPTIONS[normSort];
+    }
+
+    // 4. Pagination setup
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
     const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const skip = (parsedPage - 1) * parsedLimit;
 
-    // 4. Default M5 Sorting: Newest first (createdAt DESC)
-    // Structured cleanly so M6 can easily introduce sorting parameter overrides
-    const sort = { createdAt: -1 };
-
-    // 5. Query execution
+    // 5. Query execution: sort applied before skip & limit for correct pagination
     const [performances, total] = await Promise.all([
-      Performance.find(query).sort(sort).skip(skip).limit(parsedLimit),
+      Performance.find(query).sort(sortConfig).skip(skip).limit(parsedLimit),
       Performance.countDocuments(query),
     ]);
 

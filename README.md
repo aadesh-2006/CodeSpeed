@@ -235,7 +235,7 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 |---|---|---|---|
 | `GET` | `/api/auth/me` | Fetch authenticated user profile | None |
 | `POST` | `/api/performances` | Record a completed typing performance | `{ "language": "...", "difficulty": "...", "timerSeconds": 60, "wpm": 75, "accuracy": 98.5, "correctChars": 375, "incorrectChars": 6, "elapsedSeconds": 60, "snippetId": "..." }` |
-| `GET` | `/api/performances` | Retrieve user performance history with optional query filters (`?language=...&timerSeconds=...&page=...&limit=...`) | None |
+| `GET` | `/api/performances` | Retrieve user performance history with optional query filters and sorting (`?language=...&timerSeconds=...&sort=newest|wpm_desc|wpm_asc&page=...&limit=...`) | None |
 
 ---
 
@@ -247,3 +247,4 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 - [x] **Milestone 3 (M3)**: Snippet System V2, 72 curated realistic coding snippets across 8 languages and 3 difficulties (Easy/Medium/Hard), repeat-avoiding selection logic, difficulty UI controls, metadata display in test & results.
 - [x] **Milestone 4 (M4)**: Performance Persistence, MongoDB Performance model with user reference and strict validation, authenticated `POST /api/performances` endpoint with server-derived identity, client deduplication, resilient non-blocking UI, and full integration test coverage.
 - [x] **Milestone 5 (M5)**: Performance History, authenticated `GET /api/performances` with server-side query filtering (`language` and `timerSeconds`), pagination, user isolation, PerformanceHistory view with combinable filters, empty/loading/error states, and direct navigation from test results.
+- [x] **Milestone 6 (M6)**: Performance Sorting, server-side validated WPM sorting (`newest`, `wpm_desc`, `wpm_asc`) with deterministic secondary tie-breaking, pagination ordering preservation, and interactive Sort By controls in Performance History.

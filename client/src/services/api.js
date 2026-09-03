@@ -91,6 +91,9 @@ export const api = {
     if (params.timerSeconds && String(params.timerSeconds) !== 'all') {
       query.append('timerSeconds', params.timerSeconds);
     }
+    if (params.sort) {
+      query.append('sort', params.sort);
+    }
     if (params.page) {
       query.append('page', params.page);
     }

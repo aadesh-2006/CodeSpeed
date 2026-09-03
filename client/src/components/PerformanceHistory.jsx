@@ -3,9 +3,16 @@ import { api } from '../services/api';
 import { SUPPORTED_LANGUAGES, TIMER_OPTIONS } from '../data/snippets';
 import { formatTime } from '../utils/typingMetrics';
 
+export const SORT_MODES = [
+  { id: 'newest', label: 'Newest' },
+  { id: 'wpm_desc', label: 'WPM: High \u2192 Low' },
+  { id: 'wpm_asc', label: 'WPM: Low \u2192 High' },
+];
+
 export function PerformanceHistory({ onNavigateToPractice }) {
   const [selectedLanguage, setSelectedLanguage] = useState('all');
   const [selectedTimer, setSelectedTimer] = useState('all');
+  const [selectedSort, setSelectedSort] = useState('newest');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,6 +26,7 @@ export function PerformanceHistory({ onNavigateToPractice }) {
       const res = await api.getPerformances({
         language: selectedLanguage,
         timerSeconds: selectedTimer,
+        sort: selectedSort,
         page,
         limit: 20,
       });
@@ -33,7 +41,7 @@ export function PerformanceHistory({ onNavigateToPractice }) {
     } finally {
       setLoading(false);
     }
-  }, [selectedLanguage, selectedTimer, page]);
+  }, [selectedLanguage, selectedTimer, selectedSort, page]);
 
   useEffect(() => {
     fetchHistory();
@@ -47,6 +55,11 @@ export function PerformanceHistory({ onNavigateToPractice }) {
   const handleTimerChange = (timerSec) => {
     setSelectedTimer(timerSec);
     setPage(1); // Reset to first page on filter change
+  };
+
+  const handleSortChange = (sortId) => {
+    setSelectedSort(sortId);
+    setPage(1); // Reset to first page on sort change
   };
 
   const formatTimestamp = (dateString) => {
@@ -90,6 +103,23 @@ export function PerformanceHistory({ onNavigateToPractice }) {
 
       {/* Filter Bar */}
       <div className="history-filter-card">
+        {/* Sort Order Control */}
+        <div className="filter-group">
+          <label className="filter-label">Sort By</label>
+          <div className="filter-pill-row">
+            {SORT_MODES.map((sortMode) => (
+              <button
+                key={sortMode.id}
+                type="button"
+                className={`filter-pill ${selectedSort === sortMode.id ? 'active' : ''}`}
+                onClick={() => handleSortChange(sortMode.id)}
+              >
+                {sortMode.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Language Filter */}
         <div className="filter-group">
           <label className="filter-label">Filter by Language</label>

@@ -15,7 +15,7 @@ const JWT_TEST_SECRET = 'codespeed_test_secret_key_12345';
 process.env.JWT_SECRET = JWT_TEST_SECRET;
 process.env.NODE_ENV = 'test';
 
-describe('Performance Persistence & History API Tests', () => {
+describe('Performance Persistence, History & Sorting API Tests', () => {
   let mongoServer;
   let httpServer;
   let baseUrl;
@@ -269,14 +269,14 @@ describe('Performance Persistence & History API Tests', () => {
     });
   });
 
-  describe('GET /api/performances — History Retrieval, Filters & Pagination', () => {
+  describe('GET /api/performances — History Retrieval, Filters, Sorting & Pagination', () => {
     // Seed distinct test records for testUser and otherUser
     before(async () => {
       // Clear existing records before history suite
       await Performance.deleteMany({});
 
-      // Create 3 records for testUser:
-      // 1. JS, 60s, easy
+      // Create 4 records for testUser:
+      // 1. JS, 60s, easy, 65 WPM (Oldest)
       await Performance.create({
         userId: testUser._id,
         language: 'javascript',
@@ -288,10 +288,10 @@ describe('Performance Persistence & History API Tests', () => {
         incorrectChars: 10,
         elapsedSeconds: 60,
         snippetId: 'js-easy-01',
-        createdAt: new Date(Date.now() - 30000),
+        createdAt: new Date(Date.now() - 40000),
       });
 
-      // 2. Python, 60s, medium
+      // 2. Python, 60s, medium, 80 WPM
       await Performance.create({
         userId: testUser._id,
         language: 'python',
@@ -303,10 +303,10 @@ describe('Performance Persistence & History API Tests', () => {
         incorrectChars: 4,
         elapsedSeconds: 60,
         snippetId: 'py-medium-01',
-        createdAt: new Date(Date.now() - 20000),
+        createdAt: new Date(Date.now() - 30000),
       });
 
-      // 3. Python, 120s, hard
+      // 3. Python, 120s, hard, 85 WPM
       await Performance.create({
         userId: testUser._id,
         language: 'python',
@@ -318,6 +318,21 @@ describe('Performance Persistence & History API Tests', () => {
         incorrectChars: 17,
         elapsedSeconds: 120,
         snippetId: 'py-hard-01',
+        createdAt: new Date(Date.now() - 20000),
+      });
+
+      // 4. Python, 60s, easy, 80 WPM (Same WPM as #2, but created newer for tie-break testing)
+      await Performance.create({
+        userId: testUser._id,
+        language: 'python',
+        difficulty: 'easy',
+        timerSeconds: 60,
+        wpm: 80,
+        accuracy: 99.5,
+        correctChars: 400,
+        incorrectChars: 2,
+        elapsedSeconds: 60,
+        snippetId: 'py-easy-01',
         createdAt: new Date(Date.now() - 10000), // Newest for testUser
       });
 
@@ -354,7 +369,7 @@ describe('Performance Persistence & History API Tests', () => {
       assert.equal(res.data.status, 'error');
     });
 
-    test('returns 200 and all performances for authenticated user in newest-first order', async () => {
+    test('returns 200 and all performances for authenticated user in newest-first order by default', async () => {
       const res = await makeRequest('/api/performances', {
         method: 'GET',
         token: testToken,
@@ -362,27 +377,170 @@ describe('Performance Persistence & History API Tests', () => {
 
       assert.equal(res.status, 200);
       assert.equal(res.data.status, 'success');
-      assert.equal(res.data.data.performances.length, 3);
-      assert.equal(res.data.data.pagination.total, 3);
+      assert.equal(res.data.data.performances.length, 4);
+      assert.equal(res.data.data.pagination.total, 4);
 
-      // Verify newest first: the newest is py-hard-01
+      // Verify newest first: py-easy-01 -> py-hard-01 -> py-medium-01 -> js-easy-01
       const perfs = res.data.data.performances;
-      assert.equal(perfs[0].snippetId, 'py-hard-01');
-      assert.equal(perfs[1].snippetId, 'py-medium-01');
-      assert.equal(perfs[2].snippetId, 'js-easy-01');
+      assert.equal(perfs[0].snippetId, 'py-easy-01');
+      assert.equal(perfs[1].snippetId, 'py-hard-01');
+      assert.equal(perfs[2].snippetId, 'py-medium-01');
+      assert.equal(perfs[3].snippetId, 'js-easy-01');
     });
 
-    test('enforces user isolation: User A cannot see User B records', async () => {
-      const resA = await makeRequest('/api/performances', {
+    test('explicit sort=newest returns records ordered by createdAt descending', async () => {
+      const res = await makeRequest('/api/performances?sort=newest', {
         method: 'GET',
         token: testToken,
       });
-      assert.equal(resA.data.data.performances.length, 3);
+
+      assert.equal(res.status, 200);
+      const perfs = res.data.data.performances;
+      assert.equal(perfs[0].snippetId, 'py-easy-01');
+      assert.equal(perfs[1].snippetId, 'py-hard-01');
+      assert.equal(perfs[2].snippetId, 'py-medium-01');
+      assert.equal(perfs[3].snippetId, 'js-easy-01');
+    });
+
+    test('sort=wpm_desc returns records ordered by highest WPM first with deterministic tie-breaking', async () => {
+      const res = await makeRequest('/api/performances?sort=wpm_desc', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      const perfs = res.data.data.performances;
+      // WPM order: 85 (py-hard-01) -> 80 (py-easy-01 newer) -> 80 (py-medium-01 older) -> 65 (js-easy-01)
+      assert.equal(perfs[0].wpm, 85);
+      assert.equal(perfs[0].snippetId, 'py-hard-01');
+
+      assert.equal(perfs[1].wpm, 80);
+      assert.equal(perfs[1].snippetId, 'py-easy-01'); // newer 80 WPM
+
+      assert.equal(perfs[2].wpm, 80);
+      assert.equal(perfs[2].snippetId, 'py-medium-01'); // older 80 WPM
+
+      assert.equal(perfs[3].wpm, 65);
+      assert.equal(perfs[3].snippetId, 'js-easy-01');
+    });
+
+    test('sort=wpm_asc returns records ordered by lowest WPM first with deterministic tie-breaking', async () => {
+      const res = await makeRequest('/api/performances?sort=wpm_asc', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      const perfs = res.data.data.performances;
+      // WPM order: 65 (js-easy-01) -> 80 (py-easy-01 newer) -> 80 (py-medium-01 older) -> 85 (py-hard-01)
+      assert.equal(perfs[0].wpm, 65);
+      assert.equal(perfs[0].snippetId, 'js-easy-01');
+
+      assert.equal(perfs[1].wpm, 80);
+      assert.equal(perfs[1].snippetId, 'py-easy-01');
+
+      assert.equal(perfs[2].wpm, 80);
+      assert.equal(perfs[2].snippetId, 'py-medium-01');
+
+      assert.equal(perfs[3].wpm, 85);
+      assert.equal(perfs[3].snippetId, 'py-hard-01');
+    });
+
+    test('combines sort=wpm_desc with language filter', async () => {
+      const res = await makeRequest('/api/performances?language=python&sort=wpm_desc', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.performances.length, 3);
+      assert.equal(res.data.data.performances[0].wpm, 85);
+      assert.equal(res.data.data.performances[1].wpm, 80);
+      assert.equal(res.data.data.performances[2].wpm, 80);
+      for (const p of res.data.data.performances) {
+        assert.equal(p.language, 'python');
+      }
+    });
+
+    test('combines sort=wpm_asc with timer filter', async () => {
+      const res = await makeRequest('/api/performances?timerSeconds=60&sort=wpm_asc', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.performances.length, 3); // js 65 WPM, py 80 WPM, py 80 WPM
+      assert.equal(res.data.data.performances[0].wpm, 65);
+      assert.equal(res.data.data.performances[1].wpm, 80);
+      assert.equal(res.data.data.performances[2].wpm, 80);
+      for (const p of res.data.data.performances) {
+        assert.equal(p.timerSeconds, 60);
+      }
+    });
+
+    test('combines sort=wpm_desc with both language and timer filters', async () => {
+      const res = await makeRequest('/api/performances?language=python&timerSeconds=60&sort=wpm_desc', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.performances.length, 2);
+      assert.equal(res.data.data.performances[0].snippetId, 'py-easy-01'); // newer 80 WPM
+      assert.equal(res.data.data.performances[1].snippetId, 'py-medium-01'); // older 80 WPM
+    });
+
+    test('sorting applies before pagination (skip & limit) correctly', async () => {
+      // Sort wpm_desc with page=1, limit=2: should return 85 WPM and 80 WPM (py-easy-01)
+      const resP1 = await makeRequest('/api/performances?sort=wpm_desc&page=1&limit=2', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resP1.status, 200);
+      assert.equal(resP1.data.data.performances.length, 2);
+      assert.equal(resP1.data.data.performances[0].wpm, 85);
+      assert.equal(resP1.data.data.performances[1].wpm, 80);
+      assert.equal(resP1.data.data.pagination.page, 1);
+      assert.equal(resP1.data.data.pagination.totalPages, 2);
+
+      // Page 2 should return 80 WPM (py-medium-01) and 65 WPM (js-easy-01)
+      const resP2 = await makeRequest('/api/performances?sort=wpm_desc&page=2&limit=2', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resP2.status, 200);
+      assert.equal(resP2.data.data.performances.length, 2);
+      assert.equal(resP2.data.data.performances[0].wpm, 80);
+      assert.equal(resP2.data.data.performances[1].wpm, 65);
+      assert.equal(resP2.data.data.pagination.page, 2);
+    });
+
+    test('rejects unsupported sort options with 400 Bad Request', async () => {
+      const resBad = await makeRequest('/api/performances?sort=fastest', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resBad.status, 400);
+      assert.ok(resBad.data.message.includes('Invalid sort option'));
+
+      const resBadSql = await makeRequest('/api/performances?sort=wpm_ascending', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resBadSql.status, 400);
+    });
+
+    test('enforces user isolation with sorting active: User A never sees User B records', async () => {
+      const resA = await makeRequest('/api/performances?sort=wpm_desc', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resA.data.data.performances.length, 4);
       for (const item of resA.data.data.performances) {
         assert.equal(item.userId, testUser._id.toString());
       }
 
-      const resB = await makeRequest('/api/performances', {
+      const resB = await makeRequest('/api/performances?sort=wpm_desc', {
         method: 'GET',
         token: otherToken,
       });
@@ -393,7 +551,7 @@ describe('Performance Persistence & History API Tests', () => {
     });
 
     test('returns empty array with total 0 for user with no test history', async () => {
-      const res = await makeRequest('/api/performances', {
+      const res = await makeRequest('/api/performances?sort=wpm_desc', {
         method: 'GET',
         token: emptyToken,
       });
@@ -409,7 +567,7 @@ describe('Performance Persistence & History API Tests', () => {
         token: testToken,
       });
       assert.equal(resPy.status, 200);
-      assert.equal(resPy.data.data.performances.length, 2);
+      assert.equal(resPy.data.data.performances.length, 3);
       for (const p of resPy.data.data.performances) {
         assert.equal(p.language, 'python');
       }
@@ -427,7 +585,7 @@ describe('Performance Persistence & History API Tests', () => {
         method: 'GET',
         token: testToken,
       });
-      assert.equal(resAll.data.data.performances.length, 3);
+      assert.equal(resAll.data.data.performances.length, 4);
     });
 
     test('filters accurately by timerSeconds query parameter', async () => {
@@ -436,7 +594,7 @@ describe('Performance Persistence & History API Tests', () => {
         token: testToken,
       });
       assert.equal(res60.status, 200);
-      assert.equal(res60.data.data.performances.length, 2);
+      assert.equal(res60.data.data.performances.length, 3);
       for (const p of res60.data.data.performances) {
         assert.equal(p.timerSeconds, 60);
       }
@@ -454,29 +612,7 @@ describe('Performance Persistence & History API Tests', () => {
         method: 'GET',
         token: testToken,
       });
-      assert.equal(resAll.data.data.performances.length, 3);
-    });
-
-    test('combines language and timer filters seamlessly', async () => {
-      // Python + 60s matches exactly 1 record (py-medium-01)
-      const res = await makeRequest('/api/performances?language=python&timerSeconds=60', {
-        method: 'GET',
-        token: testToken,
-      });
-      assert.equal(res.status, 200);
-      assert.equal(res.data.data.performances.length, 1);
-      assert.equal(res.data.data.performances[0].snippetId, 'py-medium-01');
-      assert.equal(res.data.data.performances[0].language, 'python');
-      assert.equal(res.data.data.performances[0].timerSeconds, 60);
-
-      // JS + 120s matches 0 records for testUser
-      const resEmpty = await makeRequest('/api/performances?language=javascript&timerSeconds=120', {
-        method: 'GET',
-        token: testToken,
-      });
-      assert.equal(resEmpty.status, 200);
-      assert.equal(resEmpty.data.data.performances.length, 0);
-      assert.equal(resEmpty.data.data.pagination.total, 0);
+      assert.equal(resAll.data.data.performances.length, 4);
     });
 
     test('rejects invalid filter query parameters with 400', async () => {
@@ -493,29 +629,6 @@ describe('Performance Persistence & History API Tests', () => {
       });
       assert.equal(resBadTimer.status, 400);
       assert.ok(resBadTimer.data.message.includes('Invalid timer filter'));
-    });
-
-    test('paginates performance results correctly', async () => {
-      // Request page 1 with limit 2 (total is 3)
-      const resP1 = await makeRequest('/api/performances?page=1&limit=2', {
-        method: 'GET',
-        token: testToken,
-      });
-      assert.equal(resP1.status, 200);
-      assert.equal(resP1.data.data.performances.length, 2);
-      assert.equal(resP1.data.data.pagination.page, 1);
-      assert.equal(resP1.data.data.pagination.limit, 2);
-      assert.equal(resP1.data.data.pagination.total, 3);
-      assert.equal(resP1.data.data.pagination.totalPages, 2);
-
-      // Request page 2 with limit 2
-      const resP2 = await makeRequest('/api/performances?page=2&limit=2', {
-        method: 'GET',
-        token: testToken,
-      });
-      assert.equal(resP2.status, 200);
-      assert.equal(resP2.data.data.performances.length, 1);
-      assert.equal(resP2.data.data.pagination.page, 2);
     });
   });
 });
