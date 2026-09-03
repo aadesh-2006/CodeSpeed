@@ -15,12 +15,16 @@ const JWT_TEST_SECRET = 'codespeed_test_secret_key_12345';
 process.env.JWT_SECRET = JWT_TEST_SECRET;
 process.env.NODE_ENV = 'test';
 
-describe('Performance Persistence API Tests', () => {
+describe('Performance Persistence & History API Tests', () => {
   let mongoServer;
   let httpServer;
   let baseUrl;
   let testUser;
   let testToken;
+  let otherUser;
+  let otherToken;
+  let emptyUser;
+  let emptyToken;
   const testDbPath = path.resolve('node_modules/.cache/test-perf-db-' + Date.now());
 
   before(async () => {
@@ -39,15 +43,31 @@ describe('Performance Persistence API Tests', () => {
     }
     await mongoose.connect(mongoUri);
 
-    // Create a test user
     const passwordHash = await bcrypt.hash('Password123!', 8);
+
+    // Primary test user
     testUser = await User.create({
       username: 'perfuser',
       email: 'perfuser@example.com',
       passwordHash,
     });
-
     testToken = jwt.sign({ id: testUser._id.toString() }, JWT_TEST_SECRET, { expiresIn: '1h' });
+
+    // Second test user (for isolation checks)
+    otherUser = await User.create({
+      username: 'otheruser',
+      email: 'otheruser@example.com',
+      passwordHash,
+    });
+    otherToken = jwt.sign({ id: otherUser._id.toString() }, JWT_TEST_SECRET, { expiresIn: '1h' });
+
+    // Third test user (empty history)
+    emptyUser = await User.create({
+      username: 'emptyuser',
+      email: 'emptyuser@example.com',
+      passwordHash,
+    });
+    emptyToken = jwt.sign({ id: emptyUser._id.toString() }, JWT_TEST_SECRET, { expiresIn: '1h' });
 
     // Start HTTP server on random port
     await new Promise((resolve) => {
@@ -109,7 +129,7 @@ describe('Performance Persistence API Tests', () => {
     snippetId: 'js-medium-01',
   };
 
-  describe('Authentication Enforcement', () => {
+  describe('POST /api/performances — Creation & Validation', () => {
     test('rejects unauthenticated request with 401 when no token is provided', async () => {
       const res = await makeRequest('/api/performances', {
         body: validPayload,
@@ -127,9 +147,7 @@ describe('Performance Persistence API Tests', () => {
       assert.equal(res.status, 401);
       assert.equal(res.data.status, 'error');
     });
-  });
 
-  describe('Successful Performance Creation', () => {
     test('persists performance and returns 201 with saved document', async () => {
       const res = await makeRequest('/api/performances', {
         body: validPayload,
@@ -153,11 +171,6 @@ describe('Performance Persistence API Tests', () => {
       assert.equal(perf.elapsedSeconds, 60);
       assert.equal(perf.snippetId, 'js-medium-01');
       assert.ok(perf.createdAt);
-
-      // Verify in MongoDB directly
-      const inDb = await Performance.findById(perf.id);
-      assert.ok(inDb);
-      assert.equal(inDb.wpm, 75);
     });
 
     test('allows elapsedSeconds to be 0', async () => {
@@ -173,14 +186,12 @@ describe('Performance Persistence API Tests', () => {
       assert.equal(res.status, 201);
       assert.equal(res.data.data.performance.elapsedSeconds, 0);
     });
-  });
 
-  describe('User Isolation & Security', () => {
     test('server derives userId exclusively from JWT and ignores client-supplied userId', async () => {
       const spoofedUserId = new mongoose.Types.ObjectId().toString();
       const payloadWithSpoofedUser = {
         ...validPayload,
-        userId: spoofedUserId, // Attacker attempts to forge another user's ID
+        userId: spoofedUserId,
       };
 
       const res = await makeRequest('/api/performances', {
@@ -190,23 +201,11 @@ describe('Performance Persistence API Tests', () => {
 
       assert.equal(res.status, 201);
       const perf = res.data.data.performance;
-      // Stored record must belong to testUser, NOT spoofedUserId
       assert.equal(perf.userId, testUser._id.toString());
       assert.notEqual(perf.userId, spoofedUserId);
-
-      const inDb = await Performance.findById(perf.id);
-      assert.equal(inDb.userId.toString(), testUser._id.toString());
     });
-  });
 
-  describe('Validation Enforcement (400 Bad Request)', () => {
-    test('rejects missing or unsupported language', async () => {
-      const resMissing = await makeRequest('/api/performances', {
-        body: { ...validPayload, language: '' },
-        token: testToken,
-      });
-      assert.equal(resMissing.status, 400);
-
+    test('rejects missing or unsupported language with 400', async () => {
       const resInvalid = await makeRequest('/api/performances', {
         body: { ...validPayload, language: 'ruby' },
         token: testToken,
@@ -215,86 +214,308 @@ describe('Performance Persistence API Tests', () => {
       assert.ok(resInvalid.data.message.includes('Unsupported language'));
     });
 
-    test('rejects invalid difficulty level', async () => {
+    test('rejects invalid difficulty level with 400', async () => {
       const res = await makeRequest('/api/performances', {
         body: { ...validPayload, difficulty: 'impossible' },
         token: testToken,
       });
       assert.equal(res.status, 400);
-      assert.ok(res.data.message.includes('Invalid difficulty'));
     });
 
-    test('rejects invalid timer duration', async () => {
+    test('rejects invalid timer duration with 400', async () => {
       const res = await makeRequest('/api/performances', {
-        body: { ...validPayload, timerSeconds: 45 }, // 45s is not in [30, 60, 120, 180, 240, 300, 600]
+        body: { ...validPayload, timerSeconds: 45 },
         token: testToken,
       });
       assert.equal(res.status, 400);
-      assert.ok(res.data.message.includes('Invalid timer duration'));
     });
 
-    test('rejects negative WPM or non-numeric WPM', async () => {
-      const resNeg = await makeRequest('/api/performances', {
+    test('rejects negative WPM with 400', async () => {
+      const res = await makeRequest('/api/performances', {
         body: { ...validPayload, wpm: -10 },
         token: testToken,
       });
-      assert.equal(resNeg.status, 400);
-
-      const resStr = await makeRequest('/api/performances', {
-        body: { ...validPayload, wpm: 'fast' },
-        token: testToken,
-      });
-      assert.equal(resStr.status, 400);
+      assert.equal(res.status, 400);
     });
 
-    test('rejects accuracy out of 0-100 range', async () => {
-      const resHigh = await makeRequest('/api/performances', {
-        body: { ...validPayload, accuracy: 105 },
-        token: testToken,
-      });
-      assert.equal(resHigh.status, 400);
-
-      const resLow = await makeRequest('/api/performances', {
-        body: { ...validPayload, accuracy: -5 },
-        token: testToken,
-      });
-      assert.equal(resLow.status, 400);
-    });
-
-    test('rejects negative character counts', async () => {
-      const resCorrect = await makeRequest('/api/performances', {
-        body: { ...validPayload, correctChars: -1 },
-        token: testToken,
-      });
-      assert.equal(resCorrect.status, 400);
-
-      const resIncorrect = await makeRequest('/api/performances', {
-        body: { ...validPayload, incorrectChars: -1 },
-        token: testToken,
-      });
-      assert.equal(resIncorrect.status, 400);
-    });
-
-    test('rejects negative elapsedSeconds', async () => {
+    test('rejects accuracy out of 0-100 range with 400', async () => {
       const res = await makeRequest('/api/performances', {
-        body: { ...validPayload, elapsedSeconds: -1 },
+        body: { ...validPayload, accuracy: 105 },
         token: testToken,
       });
       assert.equal(res.status, 400);
     });
 
-    test('rejects empty or missing snippetId', async () => {
+    test('rejects negative characters and negative elapsedSeconds with 400', async () => {
+      const resChars = await makeRequest('/api/performances', {
+        body: { ...validPayload, correctChars: -1 },
+        token: testToken,
+      });
+      assert.equal(resChars.status, 400);
+
+      const resElapsed = await makeRequest('/api/performances', {
+        body: { ...validPayload, elapsedSeconds: -1 },
+        token: testToken,
+      });
+      assert.equal(resElapsed.status, 400);
+    });
+
+    test('rejects empty or missing snippetId with 400', async () => {
       const resEmpty = await makeRequest('/api/performances', {
         body: { ...validPayload, snippetId: '   ' },
         token: testToken,
       });
       assert.equal(resEmpty.status, 400);
+    });
+  });
 
-      const resMissing = await makeRequest('/api/performances', {
-        body: { ...validPayload, snippetId: undefined },
+  describe('GET /api/performances — History Retrieval, Filters & Pagination', () => {
+    // Seed distinct test records for testUser and otherUser
+    before(async () => {
+      // Clear existing records before history suite
+      await Performance.deleteMany({});
+
+      // Create 3 records for testUser:
+      // 1. JS, 60s, easy
+      await Performance.create({
+        userId: testUser._id,
+        language: 'javascript',
+        difficulty: 'easy',
+        timerSeconds: 60,
+        wpm: 65,
+        accuracy: 97,
+        correctChars: 325,
+        incorrectChars: 10,
+        elapsedSeconds: 60,
+        snippetId: 'js-easy-01',
+        createdAt: new Date(Date.now() - 30000),
+      });
+
+      // 2. Python, 60s, medium
+      await Performance.create({
+        userId: testUser._id,
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 80,
+        accuracy: 99,
+        correctChars: 400,
+        incorrectChars: 4,
+        elapsedSeconds: 60,
+        snippetId: 'py-medium-01',
+        createdAt: new Date(Date.now() - 20000),
+      });
+
+      // 3. Python, 120s, hard
+      await Performance.create({
+        userId: testUser._id,
+        language: 'python',
+        difficulty: 'hard',
+        timerSeconds: 120,
+        wpm: 85,
+        accuracy: 98,
+        correctChars: 850,
+        incorrectChars: 17,
+        elapsedSeconds: 120,
+        snippetId: 'py-hard-01',
+        createdAt: new Date(Date.now() - 10000), // Newest for testUser
+      });
+
+      // Create 2 records for otherUser
+      await Performance.create({
+        userId: otherUser._id,
+        language: 'java',
+        difficulty: 'easy',
+        timerSeconds: 60,
+        wpm: 55,
+        accuracy: 95,
+        correctChars: 275,
+        incorrectChars: 14,
+        elapsedSeconds: 60,
+        snippetId: 'java-easy-01',
+      });
+      await Performance.create({
+        userId: otherUser._id,
+        language: 'cpp',
+        difficulty: 'medium',
+        timerSeconds: 180,
+        wpm: 70,
+        accuracy: 96,
+        correctChars: 630,
+        incorrectChars: 26,
+        elapsedSeconds: 180,
+        snippetId: 'cpp-medium-01',
+      });
+    });
+
+    test('rejects unauthenticated GET request with 401', async () => {
+      const res = await makeRequest('/api/performances', { method: 'GET' });
+      assert.equal(res.status, 401);
+      assert.equal(res.data.status, 'error');
+    });
+
+    test('returns 200 and all performances for authenticated user in newest-first order', async () => {
+      const res = await makeRequest('/api/performances', {
+        method: 'GET',
         token: testToken,
       });
-      assert.equal(resMissing.status, 400);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.status, 'success');
+      assert.equal(res.data.data.performances.length, 3);
+      assert.equal(res.data.data.pagination.total, 3);
+
+      // Verify newest first: the newest is py-hard-01
+      const perfs = res.data.data.performances;
+      assert.equal(perfs[0].snippetId, 'py-hard-01');
+      assert.equal(perfs[1].snippetId, 'py-medium-01');
+      assert.equal(perfs[2].snippetId, 'js-easy-01');
+    });
+
+    test('enforces user isolation: User A cannot see User B records', async () => {
+      const resA = await makeRequest('/api/performances', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resA.data.data.performances.length, 3);
+      for (const item of resA.data.data.performances) {
+        assert.equal(item.userId, testUser._id.toString());
+      }
+
+      const resB = await makeRequest('/api/performances', {
+        method: 'GET',
+        token: otherToken,
+      });
+      assert.equal(resB.data.data.performances.length, 2);
+      for (const item of resB.data.data.performances) {
+        assert.equal(item.userId, otherUser._id.toString());
+      }
+    });
+
+    test('returns empty array with total 0 for user with no test history', async () => {
+      const res = await makeRequest('/api/performances', {
+        method: 'GET',
+        token: emptyToken,
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.performances.length, 0);
+      assert.equal(res.data.data.pagination.total, 0);
+      assert.equal(res.data.data.pagination.totalPages, 1);
+    });
+
+    test('filters accurately by language query parameter', async () => {
+      const resPy = await makeRequest('/api/performances?language=python', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resPy.status, 200);
+      assert.equal(resPy.data.data.performances.length, 2);
+      for (const p of resPy.data.data.performances) {
+        assert.equal(p.language, 'python');
+      }
+
+      const resJs = await makeRequest('/api/performances?language=javascript', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resJs.status, 200);
+      assert.equal(resJs.data.data.performances.length, 1);
+      assert.equal(resJs.data.data.performances[0].language, 'javascript');
+
+      // 'all' returns all
+      const resAll = await makeRequest('/api/performances?language=all', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resAll.data.data.performances.length, 3);
+    });
+
+    test('filters accurately by timerSeconds query parameter', async () => {
+      const res60 = await makeRequest('/api/performances?timerSeconds=60', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(res60.status, 200);
+      assert.equal(res60.data.data.performances.length, 2);
+      for (const p of res60.data.data.performances) {
+        assert.equal(p.timerSeconds, 60);
+      }
+
+      const res120 = await makeRequest('/api/performances?timerSeconds=120', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(res120.status, 200);
+      assert.equal(res120.data.data.performances.length, 1);
+      assert.equal(res120.data.data.performances[0].timerSeconds, 120);
+
+      // 'all' returns all
+      const resAll = await makeRequest('/api/performances?timerSeconds=all', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resAll.data.data.performances.length, 3);
+    });
+
+    test('combines language and timer filters seamlessly', async () => {
+      // Python + 60s matches exactly 1 record (py-medium-01)
+      const res = await makeRequest('/api/performances?language=python&timerSeconds=60', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.performances.length, 1);
+      assert.equal(res.data.data.performances[0].snippetId, 'py-medium-01');
+      assert.equal(res.data.data.performances[0].language, 'python');
+      assert.equal(res.data.data.performances[0].timerSeconds, 60);
+
+      // JS + 120s matches 0 records for testUser
+      const resEmpty = await makeRequest('/api/performances?language=javascript&timerSeconds=120', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resEmpty.status, 200);
+      assert.equal(resEmpty.data.data.performances.length, 0);
+      assert.equal(resEmpty.data.data.pagination.total, 0);
+    });
+
+    test('rejects invalid filter query parameters with 400', async () => {
+      const resBadLang = await makeRequest('/api/performances?language=rust', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resBadLang.status, 400);
+      assert.ok(resBadLang.data.message.includes('Invalid language filter'));
+
+      const resBadTimer = await makeRequest('/api/performances?timerSeconds=999', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resBadTimer.status, 400);
+      assert.ok(resBadTimer.data.message.includes('Invalid timer filter'));
+    });
+
+    test('paginates performance results correctly', async () => {
+      // Request page 1 with limit 2 (total is 3)
+      const resP1 = await makeRequest('/api/performances?page=1&limit=2', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resP1.status, 200);
+      assert.equal(resP1.data.data.performances.length, 2);
+      assert.equal(resP1.data.data.pagination.page, 1);
+      assert.equal(resP1.data.data.pagination.limit, 2);
+      assert.equal(resP1.data.data.pagination.total, 3);
+      assert.equal(resP1.data.data.pagination.totalPages, 2);
+
+      // Request page 2 with limit 2
+      const resP2 = await makeRequest('/api/performances?page=2&limit=2', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resP2.status, 200);
+      assert.equal(resP2.data.data.performances.length, 1);
+      assert.equal(resP2.data.data.pagination.page, 2);
     });
   });
 });

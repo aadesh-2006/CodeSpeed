@@ -97,6 +97,41 @@
   margin-left: 0.4rem;
 }
 
+.user-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.view-toggle-group {
+  display: inline-flex;
+  background: #0b0f19;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.view-toggle-btn {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.view-toggle-btn:hover {
+  color: #f8fafc;
+}
+
+.view-toggle-btn.active {
+  color: #030712;
+  background: #38bdf8;
+}
+
 .logout-compact-btn {
   padding: 0.35rem 0.85rem;
   font-size: 0.8rem;
@@ -887,6 +922,333 @@
 .action-btn.secondary-btn:hover {
   background: #374151;
   color: #f8fafc;
+}
+
+.action-btn.compact {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.85rem;
+}
+
+.action-btn.history-btn {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.action-btn.history-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  color: #7dd3fc;
+}
+
+/* ========================================================
+   M5 — Performance History Styles
+   ======================================================== */
+.history-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 1.25rem 1.75rem;
+  box-sizing: border-box;
+}
+
+.history-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.history-subtitle {
+  font-size: 0.875rem;
+  color: #94a3b8;
+  margin: 0.25rem 0 0 0;
+}
+
+.history-filter-card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  box-sizing: border-box;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filter-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.filter-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.filter-pill {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #0b0f19;
+  border: 1px solid #1f2937;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.filter-pill:hover {
+  border-color: #38bdf8;
+  color: #f8fafc;
+}
+
+.filter-pill.active {
+  color: #030712;
+  background: #38bdf8;
+  border-color: #38bdf8;
+}
+
+.history-summary-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0.5rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.refresh-btn {
+  background: transparent;
+  border: 1px solid #374151;
+  color: #94a3b8;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.refresh-btn:hover {
+  color: #f8fafc;
+  border-color: #64748b;
+}
+
+.history-state-card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: #94a3b8;
+}
+
+.history-state-card.empty .empty-symbol {
+  font-size: 2.5rem;
+  font-family: ui-monospace, monospace;
+  color: #38bdf8;
+}
+
+.history-state-card.empty h3 {
+  font-size: 1.25rem;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.history-state-card.empty p {
+  max-width: 450px;
+  font-size: 0.9rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.history-state-card.error {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.history-state-card.error .error-icon {
+  font-size: 2rem;
+  color: #ef4444;
+}
+
+.history-state-card.error .error-text {
+  color: #fca5a5;
+  margin: 0;
+}
+
+.skeleton-loader {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.skeleton-line {
+  height: 14px;
+  background: #1f2937;
+  border-radius: 6px;
+  animation: pulse 1.5s infinite;
+}
+
+.skeleton-line.title {
+  width: 60%;
+  height: 20px;
+  margin: 0 auto;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.history-card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  transition: border-color 0.2s;
+}
+
+.history-card:hover {
+  border-color: #374151;
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.card-top .badge-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.attempt-date {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.card-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.75rem;
+  background: #0b0f19;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+
+.stat-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.stat-block .stat-num {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  color: #f8fafc;
+}
+
+.stat-block .stat-lbl {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+}
+
+.wpm-block .stat-num {
+  color: #38bdf8;
+  font-size: 1.4rem;
+}
+
+.accuracy-block .stat-num {
+  color: #4ade80;
+  font-size: 1.4rem;
+}
+
+.card-bottom {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.snippet-ref code {
+  color: #94a3b8;
+  background: #0b0f19;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+.pagination-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.page-btn {
+  padding: 0.45rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-size: 0.85rem;
+  color: #94a3b8;
 }
 
 /* Common Info Card & Status */

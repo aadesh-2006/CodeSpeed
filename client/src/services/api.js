@@ -76,12 +76,30 @@ export const api = {
   login: (credentials) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(credentials) }),
   getMe: () => request('/api/auth/me', { method: 'GET' }),
 
-  // Performance persistence
+  // Performance persistence & history
   savePerformance: (performanceData) =>
     request('/api/performances', {
       method: 'POST',
       body: JSON.stringify(performanceData),
     }),
+
+  getPerformances: (params = {}) => {
+    const query = new URLSearchParams();
+    if (params.language && params.language !== 'all') {
+      query.append('language', params.language);
+    }
+    if (params.timerSeconds && String(params.timerSeconds) !== 'all') {
+      query.append('timerSeconds', params.timerSeconds);
+    }
+    if (params.page) {
+      query.append('page', params.page);
+    }
+    if (params.limit) {
+      query.append('limit', params.limit);
+    }
+    const queryString = query.toString() ? `?${query.toString()}` : '';
+    return request(`/api/performances${queryString}`, { method: 'GET' });
+  },
 };
 
 export default api;

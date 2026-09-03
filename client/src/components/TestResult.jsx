@@ -1,6 +1,6 @@
 import React from 'react';
 
-export function TestResult({ results, saveStatus, onTryAgain, onChangeSettings }) {
+export function TestResult({ results, saveStatus, onTryAgain, onChangeSettings, onViewHistory }) {
   const {
     wpm = 0,
     accuracy = 0,
@@ -74,6 +74,11 @@ export function TestResult({ results, saveStatus, onTryAgain, onChangeSettings }
         <button type="button" className="action-btn secondary-btn" onClick={onChangeSettings}>
           Change Settings
         </button>
+        {onViewHistory && (
+          <button type="button" className="action-btn history-btn" onClick={onViewHistory}>
+            View History &rarr;
+          </button>
+        )}
       </div>
     </div>
   );

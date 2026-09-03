@@ -4,6 +4,7 @@ import AuthForm from './components/AuthForm';
 import TestSetup from './components/TestSetup';
 import TypingTest from './components/TypingTest';
 import TestResult from './components/TestResult';
+import PerformanceHistory from './components/PerformanceHistory';
 import { SUPPORTED_LANGUAGES, getRandomSnippet } from './data/snippets';
 import './App.css';
 
@@ -11,6 +12,9 @@ function App() {
   const [apiStatus, setApiStatus] = useState({ status: 'checking', message: 'Connecting to API...' });
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Top-level authenticated view: 'test' | 'history'
+  const [currentView, setCurrentView] = useState('test');
 
   // Typing engine states: 'IDLE' | 'RUNNING' | 'FINISHED'
   const [testState, setTestState] = useState('IDLE');
@@ -68,11 +72,13 @@ function App() {
 
   const handleAuthSuccess = (authenticatedUser) => {
     setUser(authenticatedUser);
+    setCurrentView('test');
   };
 
   const handleLogout = () => {
     clearToken();
     setUser(null);
+    setCurrentView('test');
     setTestState('IDLE');
     setCurrentSnippet(null);
     setTestResults(null);
@@ -147,7 +153,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="header">
-        <div className="badge">Milestone 4 &bull; Performance Persistence</div>
+        <div className="badge">Milestone 5 &bull; Performance History</div>
       </header>
 
       <main className="hero">
@@ -160,7 +166,7 @@ function App() {
             <p>Loading user session...</p>
           </div>
         ) : user ? (
-          /* Authenticated Area: Typing Engine */
+          /* Authenticated Area */
           <div className="authenticated-wrapper">
             <div className="user-bar">
               <div className="user-greeting">
@@ -168,41 +174,72 @@ function App() {
                 <strong className="username-tag">{user.username}</strong>
                 <span className="user-email-tag">({user.email})</span>
               </div>
-              <button type="button" className="logout-compact-btn" onClick={handleLogout}>
-                Log Out
-              </button>
+
+              <div className="user-bar-actions">
+                <div className="view-toggle-group">
+                  <button
+                    type="button"
+                    className={`view-toggle-btn ${currentView === 'test' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('test')}
+                  >
+                    Practice
+                  </button>
+                  <button
+                    type="button"
+                    className={`view-toggle-btn ${currentView === 'history' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('history')}
+                  >
+                    History
+                  </button>
+                </div>
+
+                <button type="button" className="logout-compact-btn" onClick={handleLogout}>
+                  Log Out
+                </button>
+              </div>
             </div>
 
-            {testState === 'IDLE' && (
-              <TestSetup
-                selectedLanguage={selectedLanguage}
-                setSelectedLanguage={setSelectedLanguage}
-                selectedDifficulty={selectedDifficulty}
-                setSelectedDifficulty={setSelectedDifficulty}
-                selectedDuration={selectedDuration}
-                setSelectedDuration={setSelectedDuration}
-                onStartTest={handleStartTest}
-              />
+            {/* View: Performance History */}
+            {currentView === 'history' && (
+              <PerformanceHistory onNavigateToPractice={() => setCurrentView('test')} />
             )}
 
-            {testState === 'RUNNING' && currentSnippet && (
-              <TypingTest
-                snippet={currentSnippet}
-                durationSeconds={selectedDuration}
-                languageName={activeLanguageName}
-                onFinish={handleFinishTest}
-                onCancel={handleChangeSettings}
-                onRestart={handleTryAgain}
-              />
-            )}
+            {/* View: Typing Practice & Test */}
+            {currentView === 'test' && (
+              <>
+                {testState === 'IDLE' && (
+                  <TestSetup
+                    selectedLanguage={selectedLanguage}
+                    setSelectedLanguage={setSelectedLanguage}
+                    selectedDifficulty={selectedDifficulty}
+                    setSelectedDifficulty={setSelectedDifficulty}
+                    selectedDuration={selectedDuration}
+                    setSelectedDuration={setSelectedDuration}
+                    onStartTest={handleStartTest}
+                  />
+                )}
 
-            {testState === 'FINISHED' && testResults && (
-              <TestResult
-                results={testResults}
-                saveStatus={saveStatus}
-                onTryAgain={handleTryAgain}
-                onChangeSettings={handleChangeSettings}
-              />
+                {testState === 'RUNNING' && currentSnippet && (
+                  <TypingTest
+                    snippet={currentSnippet}
+                    durationSeconds={selectedDuration}
+                    languageName={activeLanguageName}
+                    onFinish={handleFinishTest}
+                    onCancel={handleChangeSettings}
+                    onRestart={handleTryAgain}
+                  />
+                )}
+
+                {testState === 'FINISHED' && testResults && (
+                  <TestResult
+                    results={testResults}
+                    saveStatus={saveStatus}
+                    onTryAgain={handleTryAgain}
+                    onChangeSettings={handleChangeSettings}
+                    onViewHistory={() => setCurrentView('history')}
+                  />
+                )}
+              </>
             )}
           </div>
         ) : (
@@ -218,7 +255,7 @@ function App() {
             </span>
           </div>
           <p className="milestone-note">
-            Milestone 4 Performance Persistence active with MongoDB. Completed test results are automatically recorded for authenticated users.
+            Milestone 5 Performance History active. View and filter your recorded typing tests by language and duration.
           </p>
         </div>
       </main>

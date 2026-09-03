@@ -154,3 +154,84 @@ export const createPerformance = async (req, res) => {
     });
   }
 };
+
+/**
+ * Controller to retrieve an authenticated user's performance history.
+ * Supports combinable server-side filtering by language and timerSeconds,
+ * with scalable pagination and default newest-first ordering.
+ */
+export const getPerformances = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required. User context missing.',
+      });
+    }
+
+    const { language, timerSeconds, page, limit } = req.query || {};
+
+    const query = { userId };
+
+    // 1. Language filter validation
+    if (language && language.toLowerCase() !== 'all') {
+      const normLang = language.toLowerCase().trim();
+      if (!SUPPORTED_LANGUAGES.includes(normLang)) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Invalid language filter: '${language}'. Must be 'all' or one of: ${SUPPORTED_LANGUAGES.join(', ')}.`,
+        });
+      }
+      query.language = normLang;
+    }
+
+    // 2. Timer filter validation
+    if (timerSeconds && String(timerSeconds).toLowerCase() !== 'all') {
+      const parsedTimer = parseInt(timerSeconds, 10);
+      if (isNaN(parsedTimer) || !VALID_TIMERS.includes(parsedTimer)) {
+        return res.status(400).json({
+          status: 'error',
+          message: `Invalid timer filter: '${timerSeconds}'. Must be 'all' or one of: ${VALID_TIMERS.join(', ')}.`,
+        });
+      }
+      query.timerSeconds = parsedTimer;
+    }
+
+    // 3. Pagination setup
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    // 4. Default M5 Sorting: Newest first (createdAt DESC)
+    // Structured cleanly so M6 can easily introduce sorting parameter overrides
+    const sort = { createdAt: -1 };
+
+    // 5. Query execution
+    const [performances, total] = await Promise.all([
+      Performance.find(query).sort(sort).skip(skip).limit(parsedLimit),
+      Performance.countDocuments(query),
+    ]);
+
+    const totalPages = Math.ceil(total / parsedLimit) || 1;
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        performances: performances.map((p) => p.toJSON()),
+        pagination: {
+          total,
+          page: parsedPage,
+          limit: parsedLimit,
+          totalPages,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('[Performance Controller] Error fetching performances:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error fetching performance history.',
+    });
+  }
+};
