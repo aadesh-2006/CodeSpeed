@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api, clearToken, getToken } from './services/api';
 import AuthForm from './components/AuthForm';
+import Dashboard from './components/Dashboard';
 import TestSetup from './components/TestSetup';
 import TypingTest from './components/TypingTest';
 import TestResult from './components/TestResult';
@@ -13,8 +14,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Top-level authenticated view: 'test' | 'history'
-  const [currentView, setCurrentView] = useState('test');
+  // Top-level authenticated view: 'dashboard' | 'test' | 'history'
+  const [currentView, setCurrentView] = useState('dashboard');
 
   // Typing engine states: 'IDLE' | 'RUNNING' | 'FINISHED'
   const [testState, setTestState] = useState('IDLE');
@@ -39,14 +40,18 @@ function App() {
         return res.json();
       })
       .then((data) => {
-        setApiStatus({ status: 'connected', message: data.message });
+        if (data.status === 'ok') {
+          setApiStatus({ status: 'connected', message: 'Connected to API' });
+        } else {
+          setApiStatus({ status: 'disconnected', message: 'API responded with non-ok status' });
+        }
       })
-      .catch(() => {
-        setApiStatus({ status: 'disconnected', message: 'Server not reachable' });
+      .catch((err) => {
+        setApiStatus({ status: 'disconnected', message: err.message || 'Cannot reach API' });
       });
   }, [apiUrl]);
 
-  // Restore authenticated session on initial mount
+  // Check for stored token and restore session
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -56,39 +61,40 @@ function App() {
 
     api
       .getMe()
-      .then((data) => {
-        if (data && data.user) {
-          setUser(data.user);
+      .then((res) => {
+        if (res && res.data && res.data.user) {
+          setUser(res.data.user);
+        } else {
+          clearToken();
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('[Session Check] Failed to restore session:', err.message);
         clearToken();
-        setUser(null);
       })
       .finally(() => {
         setAuthLoading(false);
       });
   }, []);
 
-  const handleAuthSuccess = (authenticatedUser) => {
-    setUser(authenticatedUser);
-    setCurrentView('test');
+  const handleAuthSuccess = (authUser) => {
+    setUser(authUser);
+    setCurrentView('dashboard');
   };
 
   const handleLogout = () => {
     clearToken();
     setUser(null);
-    setCurrentView('test');
     setTestState('IDLE');
     setCurrentSnippet(null);
     setTestResults(null);
     setSaveStatus(null);
-    attemptSavedRef.current = false;
+    setCurrentView('dashboard');
   };
 
-  // Start test with selected language, difficulty, and duration
+  // Start a new test with selected language, difficulty, and duration
   const handleStartTest = () => {
-    const snippet = getRandomSnippet(selectedLanguage, selectedDifficulty);
+    const snippet = getRandomSnippet(selectedLanguage, selectedDifficulty, currentSnippet?.id);
     setCurrentSnippet(snippet);
     setTestResults(null);
     setSaveStatus(null);
@@ -96,42 +102,49 @@ function App() {
     setTestState('RUNNING');
   };
 
-  // Complete test and show results
-  const handleFinishTest = (results) => {
-    setTestResults(results);
+  // Test finished: calculate metrics, update state, and trigger persistence
+  const handleFinishTest = (metrics) => {
+    setTestResults(metrics);
     setTestState('FINISHED');
 
-    // Prevent duplicate saves of the same completed attempt
-    if (!attemptSavedRef.current && user && results) {
+    // Trigger non-blocking asynchronous persistence for authenticated user
+    if (user && !attemptSavedRef.current && currentSnippet) {
       attemptSavedRef.current = true;
       setSaveStatus('saving');
 
+      const performancePayload = {
+        language: selectedLanguage,
+        difficulty: selectedDifficulty,
+        timerSeconds: selectedDuration,
+        wpm: metrics.wpm,
+        accuracy: metrics.accuracy,
+        correctChars: metrics.correctChars,
+        incorrectChars: metrics.incorrectChars,
+        elapsedSeconds: metrics.elapsedSeconds,
+        snippetId: currentSnippet.id,
+      };
+
       api
-        .savePerformance({
-          language: results.language,
-          difficulty: results.difficulty,
-          timerSeconds: results.timerSeconds,
-          wpm: results.wpm,
-          accuracy: results.accuracy,
-          correctChars: results.correctChars,
-          incorrectChars: results.incorrectChars,
-          elapsedSeconds: results.elapsedSeconds,
-          snippetId: results.snippetId,
-        })
-        .then(() => {
-          setSaveStatus('saved');
+        .savePerformance(performancePayload)
+        .then((res) => {
+          if (res && res.status === 'success') {
+            setSaveStatus('saved');
+          } else {
+            console.warn('[Performance Save] Non-success response:', res);
+            setSaveStatus('error');
+          }
         })
         .catch((err) => {
-          console.warn('[CodeSpeed] Failed to save performance:', err.message);
+          console.error('[Performance Save] Error:', err.message);
           setSaveStatus('error');
         });
     }
   };
 
-  // Try again with fresh snippet for same language and difficulty
+  // Restart current test with a new snippet of same language/difficulty
   const handleTryAgain = () => {
-    const freshSnippet = getRandomSnippet(selectedLanguage, selectedDifficulty, currentSnippet?.id);
-    setCurrentSnippet(freshSnippet);
+    const nextSnippet = getRandomSnippet(selectedLanguage, selectedDifficulty, currentSnippet?.id);
+    setCurrentSnippet(nextSnippet);
     setTestResults(null);
     setSaveStatus(null);
     attemptSavedRef.current = false;
@@ -153,7 +166,7 @@ function App() {
   return (
     <div className="app-container">
       <header className="header">
-        <div className="badge">Milestone 7 &bull; WPM Progression Graph</div>
+        <div className="badge">CodeSpeed &bull; Polished Final Release</div>
       </header>
 
       <main className="hero">
@@ -179,6 +192,13 @@ function App() {
                 <div className="view-toggle-group">
                   <button
                     type="button"
+                    className={`view-toggle-btn ${currentView === 'dashboard' ? 'active' : ''}`}
+                    onClick={() => setCurrentView('dashboard')}
+                  >
+                    Dashboard
+                  </button>
+                  <button
+                    type="button"
                     className={`view-toggle-btn ${currentView === 'test' ? 'active' : ''}`}
                     onClick={() => setCurrentView('test')}
                   >
@@ -199,7 +219,16 @@ function App() {
               </div>
             </div>
 
-            {/* View: Performance History */}
+            {/* View: User Dashboard */}
+            {currentView === 'dashboard' && (
+              <Dashboard
+                user={user}
+                onNavigateToPractice={() => setCurrentView('test')}
+                onNavigateToHistory={() => setCurrentView('history')}
+              />
+            )}
+
+            {/* View: Performance History & Graph */}
             {currentView === 'history' && (
               <PerformanceHistory onNavigateToPractice={() => setCurrentView('test')} />
             )}
@@ -236,6 +265,7 @@ function App() {
                     saveStatus={saveStatus}
                     onTryAgain={handleTryAgain}
                     onChangeSettings={handleChangeSettings}
+                    onViewDashboard={() => setCurrentView('dashboard')}
                     onViewHistory={() => setCurrentView('history')}
                   />
                 )}
@@ -255,7 +285,7 @@ function App() {
             </span>
           </div>
           <p className="milestone-note">
-            Milestone 7 WPM Progression Graph active. Visualize typing speed trends across attempts with dynamic scaling and chronological progression.
+            Milestone 8 Final Release active. Practice coding typing speed, monitor personal bests and language stats on the dashboard, and analyze progression over time.
           </p>
         </div>
       </main>

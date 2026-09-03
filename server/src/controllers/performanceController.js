@@ -341,3 +341,123 @@ export const getPerformanceGraph = async (req, res) => {
     });
   }
 };
+
+/**
+ * Controller to retrieve aggregate dashboard metrics for the authenticated user.
+ * Calculates total tests, total time, average WPM, average accuracy,
+ * personal best (with deterministic tie-breaking: wpm DESC, accuracy DESC, createdAt DESC),
+ * language breakdown with averageWpm, and 3 most recent attempts.
+ */
+export const getPerformanceSummary = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required. User context missing.',
+      });
+    }
+
+    const records = await Performance.find({ userId }).sort({ createdAt: -1 });
+
+    if (!records || records.length === 0) {
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          totalTests: 0,
+          totalTimeTypedSeconds: 0,
+          averageWpm: 0,
+          averageAccuracy: 0,
+          personalBest: null,
+          languageBreakdown: [],
+          recentAttempts: [],
+        },
+      });
+    }
+
+    const totalTests = records.length;
+    const totalTimeTypedSeconds = records.reduce((acc, r) => acc + (r.elapsedSeconds || 0), 0);
+
+    const sumWpm = records.reduce((acc, r) => acc + (r.wpm || 0), 0);
+    const averageWpm = Math.round(sumWpm / totalTests);
+
+    const sumAccuracy = records.reduce((acc, r) => acc + (r.accuracy || 0), 0);
+    const averageAccuracy = Math.round((sumAccuracy / totalTests) * 10) / 10;
+
+    // Deterministic Personal Best selection:
+    // 1. highest WPM
+    // 2. highest accuracy
+    // 3. newest createdAt
+    const sortedForPb = [...records].sort((a, b) => {
+      if (b.wpm !== a.wpm) return b.wpm - a.wpm;
+      if (b.accuracy !== a.accuracy) return b.accuracy - a.accuracy;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    const pbRecord = sortedForPb[0];
+    const personalBest = {
+      id: pbRecord._id.toString(),
+      wpm: pbRecord.wpm,
+      accuracy: pbRecord.accuracy,
+      language: pbRecord.language,
+      difficulty: pbRecord.difficulty,
+      timerSeconds: pbRecord.timerSeconds,
+      snippetId: pbRecord.snippetId,
+      createdAt: pbRecord.createdAt,
+    };
+
+    // Language Breakdown
+    const langMap = {};
+    for (const r of records) {
+      const l = r.language;
+      if (!langMap[l]) {
+        langMap[l] = { language: l, testCount: 0, sumWpm: 0, bestWpm: 0 };
+      }
+      langMap[l].testCount += 1;
+      langMap[l].sumWpm += r.wpm || 0;
+      if (r.wpm > langMap[l].bestWpm) {
+        langMap[l].bestWpm = r.wpm;
+      }
+    }
+
+    const languageBreakdown = Object.values(langMap)
+      .map((item) => ({
+        language: item.language,
+        testCount: item.testCount,
+        bestWpm: item.bestWpm,
+        averageWpm: Math.round(item.sumWpm / item.testCount),
+      }))
+      .sort((a, b) => b.testCount - a.testCount || b.averageWpm - a.averageWpm);
+
+    // Recent 3 attempts
+    const recentAttempts = records.slice(0, 3).map((r) => ({
+      id: r._id.toString(),
+      wpm: r.wpm,
+      accuracy: r.accuracy,
+      language: r.language,
+      difficulty: r.difficulty,
+      timerSeconds: r.timerSeconds,
+      snippetId: r.snippetId,
+      createdAt: r.createdAt,
+    }));
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        totalTests,
+        totalTimeTypedSeconds,
+        averageWpm,
+        averageAccuracy,
+        personalBest,
+        languageBreakdown,
+        recentAttempts,
+      },
+    });
+  } catch (error) {
+    console.error('[Performance Controller] Error fetching performance summary:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error fetching performance summary.',
+    });
+  }
+};

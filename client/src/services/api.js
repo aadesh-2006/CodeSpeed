@@ -115,6 +115,8 @@ export const api = {
     const queryString = query.toString() ? `?${query.toString()}` : '';
     return request(`/api/performances/graph${queryString}`, { method: 'GET' });
   },
+
+  getPerformanceSummary: () => request('/api/performances/summary', { method: 'GET' }),
 };
 
 export default api;

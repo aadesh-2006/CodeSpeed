@@ -237,6 +237,7 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 | `POST` | `/api/performances` | Record a completed typing performance | `{ "language": "...", "difficulty": "...", "timerSeconds": 60, "wpm": 75, "accuracy": 98.5, "correctChars": 375, "incorrectChars": 6, "elapsedSeconds": 60, "snippetId": "..." }` |
 | `GET` | `/api/performances` | Retrieve user performance history with optional query filters and sorting (`?language=...&timerSeconds=...&sort=newest|wpm_desc|wpm_asc&page=...&limit=...`) | None |
 | `GET` | `/api/performances/graph` | Retrieve complete chronological WPM progression dataset (`createdAt ASC`) with sequential 1-based attempt numbering (`?language=...&timerSeconds=...`) | None |
+| `GET` | `/api/performances/summary` | Retrieve aggregated dashboard statistics (Personal Best, Average WPM, Average Accuracy, Total Tests, Time Typed, Language Breakdown, Recent Activity) | None |
 
 ---
 
@@ -250,3 +251,4 @@ $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharac
 - [x] **Milestone 5 (M5)**: Performance History, authenticated `GET /api/performances` with server-side query filtering (`language` and `timerSeconds`), pagination, user isolation, PerformanceHistory view with combinable filters, empty/loading/error states, and direct navigation from test results.
 - [x] **Milestone 6 (M6)**: Performance Sorting, server-side validated WPM sorting (`newest`, `wpm_desc`, `wpm_asc`) with deterministic secondary tie-breaking, pagination ordering preservation, and interactive Sort By controls in Performance History.
 - [x] **Milestone 7 (M7)**: WPM Progression Graph, responsive SVG visualization of typing speed improvement across sequential attempts, chronological ordering (`createdAt ASC`), dynamic numeric Y-axis bounds/ticks, interactive hover tooltips, filter integration, single/multi-point handling, and 500-attempt safety capping with explicit notice.
+- [x] **Milestone 8 (M8)**: Dashboard & Final Polish, comprehensive authenticated home dashboard with key summary metrics, deterministic Personal Best tie-breaking, language mastery breakdown with averageWpm, recent activity feed, unified 3-tab navigation (Dashboard, Practice, History), responsive styling refinements, and polished user flows.

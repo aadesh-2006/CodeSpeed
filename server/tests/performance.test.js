@@ -767,4 +767,149 @@ describe('Performance Persistence, History & Sorting API Tests', () => {
       assert.equal(resBadTimer.status, 400);
     });
   });
+
+  describe('GET /api/performances/summary — Dashboard Aggregation', () => {
+    test('rejects unauthenticated GET /summary request with 401', async () => {
+      const res = await makeRequest('/api/performances/summary', { method: 'GET' });
+      assert.equal(res.status, 401);
+      assert.equal(res.data.status, 'error');
+    });
+
+    test('returns 200 with accurate user aggregates, personal best, language breakdown, and recent attempts', async () => {
+      const res = await makeRequest('/api/performances/summary', {
+        method: 'GET',
+        token: testToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.status, 'success');
+
+      const data = res.data.data;
+      assert.equal(data.totalTests, 4);
+      assert.equal(data.totalTimeTypedSeconds, 300);
+      assert.equal(data.averageWpm, 78);
+      assert.equal(data.averageAccuracy, 98.4);
+
+      // Personal Best: highest WPM is py-hard-01 with 85 WPM
+      assert.ok(data.personalBest);
+      assert.equal(data.personalBest.wpm, 85);
+      assert.equal(data.personalBest.accuracy, 98);
+      assert.equal(data.personalBest.language, 'python');
+      assert.equal(data.personalBest.snippetId, 'py-hard-01');
+
+      // Language Breakdown
+      assert.equal(data.languageBreakdown.length, 2);
+      const pyLang = data.languageBreakdown.find((l) => l.language === 'python');
+      assert.ok(pyLang);
+      assert.equal(pyLang.testCount, 3);
+      assert.equal(pyLang.bestWpm, 85);
+      assert.equal(pyLang.averageWpm, 82);
+
+      const jsLang = data.languageBreakdown.find((l) => l.language === 'javascript');
+      assert.ok(jsLang);
+      assert.equal(jsLang.testCount, 1);
+      assert.equal(jsLang.bestWpm, 65);
+      assert.equal(jsLang.averageWpm, 65);
+
+      // Recent 3 attempts in newest-first order
+      assert.equal(data.recentAttempts.length, 3);
+      assert.equal(data.recentAttempts[0].snippetId, 'py-easy-01');
+      assert.equal(data.recentAttempts[1].snippetId, 'py-hard-01');
+      assert.equal(data.recentAttempts[2].snippetId, 'py-medium-01');
+    });
+
+    test('deterministic Personal Best tie-breaking: highest WPM, then highest accuracy, then newest createdAt', async () => {
+      // Create user with tie-break scenarios
+      const tieUser = await User.create({
+        username: 'tieuser',
+        email: 'tieuser@example.com',
+        passwordHash: 'dummyhash',
+      });
+      const tieToken = jwt.sign({ id: tieUser._id.toString() }, JWT_TEST_SECRET, { expiresIn: '1h' });
+
+      // Attempt 1: 90 WPM, 95% acc, older
+      await Performance.create({
+        userId: tieUser._id,
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 90,
+        accuracy: 95,
+        correctChars: 450,
+        incorrectChars: 15,
+        elapsedSeconds: 60,
+        snippetId: 'py-01',
+        createdAt: new Date(Date.now() - 30000),
+      });
+
+      // Attempt 2: 90 WPM, 99% acc, newer (should win over attempt 1 due to accuracy)
+      await Performance.create({
+        userId: tieUser._id,
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 90,
+        accuracy: 99,
+        correctChars: 450,
+        incorrectChars: 2,
+        elapsedSeconds: 60,
+        snippetId: 'py-02',
+        createdAt: new Date(Date.now() - 20000),
+      });
+
+      // Attempt 3: 90 WPM, 99% acc, newest (should win over attempt 2 due to newest createdAt)
+      await Performance.create({
+        userId: tieUser._id,
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 90,
+        accuracy: 99,
+        correctChars: 450,
+        incorrectChars: 2,
+        elapsedSeconds: 60,
+        snippetId: 'py-03',
+        createdAt: new Date(Date.now() - 10000),
+      });
+
+      const res = await makeRequest('/api/performances/summary', {
+        method: 'GET',
+        token: tieToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.personalBest.snippetId, 'py-03');
+    });
+
+    test('returns clean zeroed summary structure for user with zero attempts', async () => {
+      const res = await makeRequest('/api/performances/summary', {
+        method: 'GET',
+        token: emptyToken,
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.data.data.totalTests, 0);
+      assert.equal(res.data.data.totalTimeTypedSeconds, 0);
+      assert.equal(res.data.data.averageWpm, 0);
+      assert.equal(res.data.data.averageAccuracy, 0);
+      assert.equal(res.data.data.personalBest, null);
+      assert.deepEqual(res.data.data.languageBreakdown, []);
+      assert.deepEqual(res.data.data.recentAttempts, []);
+    });
+
+    test('enforces user isolation: User A summary contains zero User B records', async () => {
+      const resA = await makeRequest('/api/performances/summary', {
+        method: 'GET',
+        token: testToken,
+      });
+      assert.equal(resA.data.data.totalTests, 4);
+
+      const resB = await makeRequest('/api/performances/summary', {
+        method: 'GET',
+        token: otherToken,
+      });
+      assert.equal(resB.data.data.totalTests, 2);
+      assert.equal(resB.data.data.personalBest.language, 'cpp');
+    });
+  });
 });
