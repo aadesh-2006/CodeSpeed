@@ -2,17 +2,17 @@ import React from 'react';
 import { SUPPORTED_LANGUAGES, DIFFICULTY_LEVELS, TIMER_OPTIONS } from '../data/snippets';
 
 export function TestSetup({
-  selectedMode = 'practice',
-  setSelectedMode,
-  selectedLanguage,
-  setSelectedLanguage,
-  selectedDifficulty,
-  setSelectedDifficulty,
-  selectedDuration,
-  setSelectedDuration,
-  onStartTest,
+  mode = 'practice',
+  language = 'javascript',
+  difficulty = 'medium',
+  duration = 60,
+  onModeChange,
+  onLanguageChange,
+  onDifficultyChange,
+  onDurationChange,
+  onStart,
 }) {
-  const isRanked = selectedMode === 'ranked';
+  const isRanked = mode === 'ranked';
 
   return (
     <div className={`setup-panel ${isRanked ? 'ranked-setup' : ''}`}>
@@ -27,15 +27,15 @@ export function TestSetup({
         <div className="setup-pill-group">
           <button
             type="button"
-            className={`setup-pill ${selectedMode === 'practice' ? 'active' : ''}`}
-            onClick={() => setSelectedMode && setSelectedMode('practice')}
+            className={`setup-pill ${mode === 'practice' ? 'active' : ''}`}
+            onClick={() => onModeChange && onModeChange('practice')}
           >
             Practice
           </button>
           <button
             type="button"
-            className={`setup-pill ranked-pill ${selectedMode === 'ranked' ? 'active' : ''}`}
-            onClick={() => setSelectedMode && setSelectedMode('ranked')}
+            className={`setup-pill ranked-pill ${mode === 'ranked' ? 'active' : ''}`}
+            onClick={() => onModeChange && onModeChange('ranked')}
           >
             Ranked
           </button>
@@ -52,8 +52,8 @@ export function TestSetup({
             <button
               key={lang.id}
               type="button"
-              className={`setup-pill ${selectedLanguage === lang.id ? 'active' : ''}`}
-              onClick={() => setSelectedLanguage(lang.id)}
+              className={`setup-pill ${language === lang.id ? 'active' : ''}`}
+              onClick={() => onLanguageChange && onLanguageChange(lang.id)}
             >
               {lang.name}
             </button>
@@ -71,8 +71,8 @@ export function TestSetup({
             <button
               key={diff.id}
               type="button"
-              className={`setup-pill diff-${diff.id} ${selectedDifficulty === diff.id ? 'active' : ''}`}
-              onClick={() => setSelectedDifficulty(diff.id)}
+              className={`setup-pill diff-${diff.id} ${difficulty === diff.id ? 'active' : ''}`}
+              onClick={() => onDifficultyChange && onDifficultyChange(diff.id)}
             >
               <span className="diff-indicator"></span>
               {diff.name}
@@ -91,8 +91,8 @@ export function TestSetup({
             <button
               key={timer.seconds}
               type="button"
-              className={`setup-pill ${selectedDuration === timer.seconds ? 'active' : ''}`}
-              onClick={() => setSelectedDuration(timer.seconds)}
+              className={`setup-pill ${duration === timer.seconds ? 'active' : ''}`}
+              onClick={() => onDurationChange && onDurationChange(timer.seconds)}
             >
               {timer.label}
             </button>
@@ -105,7 +105,7 @@ export function TestSetup({
         <button
           type="button"
           className={`btn ${isRanked ? 'btn-amber' : 'btn-primary'} btn-lg`}
-          onClick={onStartTest}
+          onClick={onStart}
         >
           {isRanked ? 'Start Ranked Test' : 'Start Practice Test'}
         </button>

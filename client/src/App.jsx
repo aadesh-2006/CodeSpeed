@@ -379,6 +379,7 @@ function App() {
                     language={selectedLanguage}
                     difficulty={selectedDifficulty}
                     duration={selectedDuration}
+                    onModeChange={setSelectedMode}
                     onLanguageChange={setSelectedLanguage}
                     onDifficultyChange={setSelectedDifficulty}
                     onDurationChange={setSelectedDuration}
@@ -392,6 +393,8 @@ function App() {
                     duration={selectedDuration}
                     language={selectedLanguage}
                     onFinish={handleFinishTest}
+                    onCancel={handleChangeSettings}
+                    onRestart={handleTryAgain}
                   />
                 )}
 

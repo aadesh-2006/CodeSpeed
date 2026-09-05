@@ -7,9 +7,9 @@ import {
   getNextLineIndent,
 } from '../utils/typingMetrics';
 
-export function TypingTest({ snippet, durationSeconds, languageName, onFinish, onCancel, onRestart }) {
+export function TypingTest({ snippet, duration = 60, language = 'javascript', onFinish, onCancel, onRestart }) {
   const [typedCode, setTypedCode] = useState('');
-  const [timeLeft, setTimeLeft] = useState(durationSeconds);
+  const [timeLeft, setTimeLeft] = useState(duration);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
 
@@ -18,12 +18,12 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
   const codeDisplayRef = useRef(null);
 
   const targetCode = snippet?.code || '';
-  const language = snippet?.language || '';
+  const snippetLanguage = snippet?.language || language;
 
   // Focus textarea on mount and reset state
   useEffect(() => {
     setTypedCode('');
-    setTimeLeft(durationSeconds);
+    setTimeLeft(duration);
     setElapsedSeconds(0);
     setHasStarted(false);
 
@@ -36,7 +36,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
         clearInterval(timerRef.current);
       }
     };
-  }, [snippet, durationSeconds]);
+  }, [snippet, duration]);
 
   // Handle countdown timer
   useEffect(() => {
@@ -69,7 +69,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
   }, [timeLeft, hasStarted]);
 
   // Live character comparison with whitespace tolerance and language awareness
-  const comparison = compareCharacters(targetCode, typedCode, { language });
+  const comparison = compareCharacters(targetCode, typedCode, { language: snippetLanguage });
   const liveCorrect = comparison.meaningfulCorrectCount !== undefined
     ? comparison.meaningfulCorrectCount
     : comparison.correctCount;
@@ -87,7 +87,7 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
-    const finalElapsed = Math.max(1, elapsedSeconds || durationSeconds - timeLeft);
+    const finalElapsed = Math.max(1, elapsedSeconds || duration - timeLeft);
     const meaningfulCorrect = comparison.meaningfulCorrectCount !== undefined
       ? comparison.meaningfulCorrectCount
       : comparison.correctCount;
@@ -97,22 +97,23 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
       meaningfulCorrect + comparison.incorrectCount
     );
 
-    onFinish({
-      wpm: finalWpm,
-      accuracy: finalAccuracy,
-      correctChars: meaningfulCorrect,
-      incorrectChars: comparison.incorrectCount,
-      totalTyped: meaningfulCorrect + comparison.incorrectCount,
-      elapsedSeconds: finalElapsed,
-      timeElapsedSeconds: finalElapsed,
-      timeElapsedFormatted: formatTime(finalElapsed),
-      language: snippet.language,
-      languageName,
-      difficulty: snippet.difficulty,
-      timerSeconds: durationSeconds,
-      snippetId: snippet.id,
-      snippetTitle: snippet.title,
-    });
+    if (onFinish) {
+      onFinish({
+        wpm: finalWpm,
+        accuracy: finalAccuracy,
+        correctChars: meaningfulCorrect,
+        incorrectChars: comparison.incorrectCount,
+        totalTyped: meaningfulCorrect + comparison.incorrectCount,
+        elapsedSeconds: finalElapsed,
+        timeElapsedSeconds: finalElapsed,
+        timeElapsedFormatted: formatTime(finalElapsed),
+        language: snippetLanguage,
+        difficulty: snippet?.difficulty || 'medium',
+        timerSeconds: duration,
+        snippetId: snippet?.id,
+        snippetTitle: snippet?.title,
+      });
+    }
   };
 
   const handleInputChange = (e) => {
@@ -123,7 +124,6 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
     setTypedCode(e.target.value);
   };
 
-  // Keyboard navigation & smart indentation handling (Enter auto-indents, Tab inserts 2 spaces)
   const handleKeyDown = (e) => {
     if (timeLeft === 0) return;
 
@@ -131,51 +131,48 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
       setHasStarted(true);
     }
 
-    // Tab key inserts 2 spaces
+    // Smart Tab indentation: insert 2 spaces
     if (e.key === 'Tab') {
       e.preventDefault();
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const spaces = '  '; // 2 spaces for code indentation
-
-      const updated = typedCode.substring(0, start) + spaces + typedCode.substring(end);
-      setTypedCode(updated);
-
-      requestAnimationFrame(() => {
+      const cursorPosition = e.target.selectionStart;
+      const newTyped = typedCode.slice(0, cursorPosition) + '  ' + typedCode.slice(cursorPosition);
+      setTypedCode(newTyped);
+      setTimeout(() => {
         if (textareaRef.current) {
-          textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + spaces.length;
+          textareaRef.current.selectionStart = cursorPosition + 2;
+          textareaRef.current.selectionEnd = cursorPosition + 2;
         }
-      });
+      }, 0);
       return;
     }
 
-    // Enter key auto-indents to next line
+    // Smart Enter auto-indentation based on language syntax
     if (e.key === 'Enter') {
       e.preventDefault();
-      const textarea = textareaRef.current;
-      if (!textarea) return;
+      const cursorPosition = e.target.selectionStart;
+      const textBeforeCursor = typedCode.slice(0, cursorPosition);
+      const textAfterCursor = typedCode.slice(cursorPosition);
 
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
+      const lines = textBeforeCursor.split('\n');
+      const currentLine = lines[lines.length - 1];
+      const targetLines = targetCode.split('\n');
+      const expectedLine = targetLines[lines.length - 1] || '';
 
-      const nextIndent = getNextLineIndent(targetCode, typedCode.substring(0, start), language);
-      const insertion = '\n' + nextIndent;
+      const indentation = getNextLineIndent(currentLine, expectedLine, snippetLanguage);
+      const newTyped = textBeforeCursor + '\n' + indentation + textAfterCursor;
+      const newCursorPos = cursorPosition + 1 + indentation.length;
 
-      const updated = typedCode.substring(0, start) + insertion + typedCode.substring(end);
-      setTypedCode(updated);
-
-      requestAnimationFrame(() => {
+      setTypedCode(newTyped);
+      setTimeout(() => {
         if (textareaRef.current) {
-          textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + insertion.length;
+          textareaRef.current.selectionStart = newCursorPos;
+          textareaRef.current.selectionEnd = newCursorPos;
         }
-      });
-      return;
+      }, 0);
     }
   };
 
+  // Clicking on code display redirects focus to hidden textarea
   const handleCodeAreaClick = () => {
     if (textareaRef.current) {
       textareaRef.current.focus();
@@ -183,19 +180,22 @@ export function TypingTest({ snippet, durationSeconds, languageName, onFinish, o
   };
 
   return (
-    <div className="typing-container">
-      {/* Top Test Navigation Bar */}
-      <div className="test-toolbar">
-        <div className="test-meta-tags">
-          <span className="badge-tag">{languageName}</span>
-          <span className={`diff-tag ${snippet.difficulty?.toLowerCase()}`}>
-            {snippet.difficulty ? snippet.difficulty.charAt(0).toUpperCase() + snippet.difficulty.slice(1) : ''}
+    <div className="typing-test-container">
+      {/* Test Control Header */}
+      <div className="test-header">
+        <div className="test-timer-badge">
+          <span className="timer-icon">&#x23F1;</span>
+          <span className={`timer-value ${timeLeft <= 10 && hasStarted ? 'timer-critical' : ''}`}>
+            {formatTime(timeLeft)}
           </span>
-          <span className="snippet-name-tag">{snippet.title}</span>
         </div>
 
-        <div className={`countdown-clock ${timeLeft <= 10 ? 'urgent' : ''}`}>
-          <span className="clock-digits">{formatTime(timeLeft)}</span>
+        <div className="test-meta">
+          <span className="badge badge-blue">{snippetLanguage}</span>
+          {snippet?.difficulty && (
+            <span className={`badge badge-${snippet.difficulty}`}>{snippet.difficulty}</span>
+          )}
+          <span className="badge badge-neutral">{snippet?.title || 'Code Snippet'}</span>
         </div>
 
         <div className="test-actions">
