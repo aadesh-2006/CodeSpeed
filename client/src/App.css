@@ -1490,6 +1490,209 @@ body {
   }
 }
 
+/* ========================================================
+   Daily Practice Streak Widget (Developer-Tool Aesthetic)
+   ======================================================== */
+.streak-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: clamp(1rem, 2.5vw, 1.25rem);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.streak-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.streak-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.streak-title-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.streak-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.streak-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.streak-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.streak-status-pill.status-active {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}
+
+.streak-status-pill.status-pending {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.streak-card-body {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 2fr;
+  gap: 1.25rem;
+  align-items: center;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 768px) {
+  .streak-card-body {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+.streak-metrics-col {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.streak-metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.streak-metric-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.streak-metric-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.streak-metric-number {
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.streak-metric-unit {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* 7-Day Activity Strip */
+.streak-calendar-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.streak-calendar-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.recent-days-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.4rem;
+}
+
+.day-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.25rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s ease;
+}
+
+.day-cell.day-today {
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.day-cell.day-practiced {
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.day-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.day-today .day-label {
+  color: #f59e0b;
+  font-weight: 800;
+}
+
+.day-flame-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+}
+
+.day-status-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.day-practiced .day-status-dot {
+  background: #f59e0b;
+}
+
+/* Flame SVG States */
+.streak-flame-icon.flame-lit {
+  filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.45));
+}
+
+.streak-flame-icon.flame-unlit {
+  color: var(--text-dim);
+  opacity: 0.4;
+}
+
 /* Editor Window */
 .editor-panel {
   background: var(--bg-input);

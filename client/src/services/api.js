@@ -140,6 +140,12 @@ export const api = {
   },
 
   getBadges: () => request('/api/performances/badges', { method: 'GET' }),
+
+  getStreak: (timezone) => {
+    const tz = timezone || (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC');
+    const queryString = tz ? `?timezone=${encodeURIComponent(tz)}` : '';
+    return request(`/api/users/me/streak${queryString}`, { method: 'GET' });
+  },
 };
 
 export default api;

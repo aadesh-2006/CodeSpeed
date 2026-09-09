@@ -5,6 +5,7 @@ import Performance, {
   PERFORMANCE_MODES,
 } from '../models/Performance.js';
 import { evaluateBadges } from '../utils/badgeRules.js';
+import { calculateDailyStreak } from '../utils/streakCalculator.js';
 
 export const SORT_OPTIONS = {
   newest: { createdAt: -1 },
@@ -586,3 +587,43 @@ export const getBadges = async (req, res) => {
     });
   }
 };
+
+/**
+ * Controller to calculate and return daily Practice streak metrics for the authenticated user.
+ * Derived exclusively from Practice sessions.
+ * GET /api/users/me/streak or GET /api/performances/streak
+ */
+export const getUserStreak = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required. User context missing.',
+      });
+    }
+
+    const { timezone } = req.query || {};
+
+    // Query all Practice sessions for this user (indexed by userId and mode)
+    const practiceRecords = await Performance.find(
+      { userId, mode: 'practice' },
+      { createdAt: 1 }
+    ).sort({ createdAt: 1 });
+
+    const timestamps = practiceRecords.map((r) => r.createdAt);
+    const streakData = calculateDailyStreak(timestamps, { timeZone: timezone });
+
+    return res.status(200).json({
+      status: 'success',
+      data: streakData,
+    });
+  } catch (error) {
+    console.error('[Performance Controller] Error calculating user streak:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error calculating streak.',
+    });
+  }
+};
+

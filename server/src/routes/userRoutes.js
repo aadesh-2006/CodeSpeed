@@ -1,8 +1,12 @@
 import express from 'express';
 import { getPublicProfile, searchUsers } from '../controllers/authController.js';
+import { getUserStreak } from '../controllers/performanceController.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// User streak endpoint: GET /api/users/me/streak
+router.get('/me/streak', authenticate, getUserStreak);
 
 // Search developers endpoint: GET /api/users/search?q=<query>
 router.get('/search', authenticate, searchUsers);

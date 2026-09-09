@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import BadgesGrid from './BadgesGrid';
 import PrivacySettingsModal from './PrivacySettingsModal';
+import StreakCard from './StreakCard';
 import { SUPPORTED_LANGUAGES, TIMER_OPTIONS } from '../data/snippets';
 import { formatTime } from '../utils/typingMetrics';
 
@@ -24,6 +25,7 @@ export function Dashboard({
     recentAttempts: [],
   });
   const [badges, setBadges] = useState([]);
+  const [streak, setStreak] = useState(null);
   const [loading, setLoading] = useState(true);
   const [badgesLoading, setBadgesLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -60,12 +62,25 @@ export function Dashboard({
     }
   }, [dashboardMode]);
 
+  const fetchStreak = useCallback(async () => {
+    try {
+      const res = await api.getStreak();
+      if (res && res.data) {
+        setStreak(res.data);
+      }
+    } catch (err) {
+      console.error('[Dashboard] Failed to load streak data:', err.message);
+    }
+  }, []);
+
   useEffect(() => {
     fetchSummary();
     if (dashboardMode === 'ranked') {
       fetchBadges();
+    } else {
+      fetchStreak();
     }
-  }, [fetchSummary, fetchBadges, dashboardMode]);
+  }, [fetchSummary, fetchBadges, fetchStreak, dashboardMode]);
 
   const handleSavePrivacy = async (newVisibility) => {
     const res = await api.updatePrivacy({ practiceStatsVisibility: newVisibility });
@@ -170,7 +185,11 @@ export function Dashboard({
             className="btn btn-icon btn-sm"
             onClick={() => {
               fetchSummary();
-              if (isRanked) fetchBadges();
+              if (isRanked) {
+                fetchBadges();
+              } else {
+                fetchStreak();
+              }
             }}
             title="Refresh statistics"
           >
@@ -199,27 +218,38 @@ export function Dashboard({
 
       {/* Empty State */}
       {!loading && !error && summary.totalTests === 0 && (
-        <div className="panel state-panel empty">
-          <div className="empty-glyph">&gt;_</div>
-          <h3>{isRanked ? 'No Ranked Attempts Recorded' : 'No Practice Attempts Yet'}</h3>
-          <p>
-            {isRanked
-              ? 'Complete a ranked typing test to record verified performance records and unlock milestone badges.'
-              : 'Complete your first coding typing test to generate your performance dashboard.'}
-          </p>
-          <button
-            type="button"
-            className={`btn ${isRanked ? 'btn-amber' : 'btn-primary'}`}
-            onClick={isRanked ? onNavigateToRanked : onNavigateToPractice}
-          >
-            {isRanked ? 'Start First Ranked Test' : 'Start Your First Test'}
-          </button>
+        <div className="dashboard-grid">
+          {!isRanked && streak && (
+            <StreakCard streak={streak} />
+          )}
+
+          <div className="panel state-panel empty">
+            <div className="empty-glyph">&gt;_</div>
+            <h3>{isRanked ? 'No Ranked Attempts Recorded' : 'No Practice Attempts Yet'}</h3>
+            <p>
+              {isRanked
+                ? 'Complete a ranked typing test to record verified performance records and unlock milestone badges.'
+                : 'Complete your first coding typing test to generate your performance dashboard.'}
+            </p>
+            <button
+              type="button"
+              className={`btn ${isRanked ? 'btn-amber' : 'btn-primary'}`}
+              onClick={isRanked ? onNavigateToRanked : onNavigateToPractice}
+            >
+              {isRanked ? 'Start First Ranked Test' : 'Start Your First Test'}
+            </button>
+          </div>
         </div>
       )}
 
       {/* Populated Dashboard Content */}
       {!loading && !error && summary.totalTests > 0 && (
         <div className="dashboard-grid">
+          {/* Daily Practice Streak Widget (Practice Mode) */}
+          {!isRanked && streak && (
+            <StreakCard streak={streak} />
+          )}
+
           {/* Key Metrics Row */}
           <div className="stats-row">
             {/* Best WPM */}
