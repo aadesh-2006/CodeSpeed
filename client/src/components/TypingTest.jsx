@@ -6,12 +6,18 @@ import {
   compareCharacters,
   getNextLineIndent,
 } from '../utils/typingMetrics';
+import {
+  getSoundEnabled,
+  toggleSound,
+  playKeySound,
+} from '../utils/keyboardSound';
 
 export function TypingTest({ snippet, duration = 60, language = 'javascript', onFinish, onCancel, onRestart }) {
   const [typedCode, setTypedCode] = useState('');
   const [timeLeft, setTimeLeft] = useState(duration);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
+  const [soundEnabled, setSoundEnabledState] = useState(getSoundEnabled);
 
   const textareaRef = useRef(null);
   const timerRef = useRef(null);
@@ -116,6 +122,11 @@ export function TypingTest({ snippet, duration = 60, language = 'javascript', on
     }
   };
 
+  const handleToggleSound = () => {
+    const nextState = toggleSound();
+    setSoundEnabledState(nextState);
+  };
+
   const handleInputChange = (e) => {
     if (timeLeft === 0) return;
     if (!hasStarted) {
@@ -129,6 +140,16 @@ export function TypingTest({ snippet, duration = 60, language = 'javascript', on
 
     if (!hasStarted) {
       setHasStarted(true);
+    }
+
+    // Play subtle mechanical keyboard sound on legitimate typing input
+    if (
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Enter' || e.key === 'Tab')
+    ) {
+      playKeySound(e.key);
     }
 
     // Smart Tab indentation: insert 2 spaces
@@ -199,6 +220,28 @@ export function TypingTest({ snippet, duration = 60, language = 'javascript', on
         </div>
 
         <div className="test-actions">
+          <button
+            type="button"
+            className={`btn btn-secondary btn-sm sound-toggle-btn ${soundEnabled ? 'sound-active' : 'sound-muted'}`}
+            onClick={handleToggleSound}
+            aria-label={soundEnabled ? 'Mute keyboard sound' : 'Enable keyboard sound'}
+            title={soundEnabled ? 'Sound: On' : 'Sound: Off'}
+          >
+            {soundEnabled ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                <line x1="23" y1="9" x2="17" y2="15" />
+                <line x1="17" y1="9" x2="23" y2="15" />
+              </svg>
+            )}
+            <span className="sound-toggle-label">{soundEnabled ? 'Sound' : 'Muted'}</span>
+          </button>
           <button type="button" className="btn btn-secondary btn-sm" onClick={onRestart} title="Restart test">
             &#x21BB; Restart
           </button>

@@ -178,7 +178,9 @@ describe('Component-Level Regression Tests', () => {
       assert.ok(html.includes('easy'), 'Rendered HTML should display easy difficulty badge');
       assert.ok(html.includes('Arrow Functions'), 'Rendered HTML should display snippet title');
 
-      // 3. Verify action buttons (Restart & Settings/Cancel)
+      // 3. Verify action buttons (Sound toggle, Restart & Settings/Cancel)
+      assert.ok(html.includes('sound-toggle-btn'), 'Rendered HTML should include sound toggle button');
+      assert.ok(html.includes('Sound: On') || html.includes('Sound: Off'), 'Sound button should display sound title');
       assert.ok(html.includes('Restart'), 'Rendered HTML should include Restart button');
       assert.ok(html.includes('Settings'), 'Rendered HTML should include Settings button');
     });
@@ -206,6 +208,7 @@ describe('Component-Level Regression Tests', () => {
       assert.ok(html.includes('02:00'), 'Rendered HTML should format 120s duration as 02:00');
       assert.ok(html.includes('python'), 'Rendered HTML should display python badge');
       assert.ok(html.includes('hard'), 'Rendered HTML should display hard badge');
+      assert.ok(html.includes('sound-toggle-btn'), 'Rendered HTML should include sound toggle button');
     });
   });
 });

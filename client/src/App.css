@@ -1465,6 +1465,31 @@ body {
   flex-shrink: 0;
 }
 
+.sound-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sound-toggle-btn.sound-muted {
+  opacity: 0.65;
+  color: var(--text-muted);
+}
+
+.sound-toggle-btn.sound-active {
+  color: var(--accent-blue);
+}
+
+.sound-toggle-label {
+  font-size: 0.75rem;
+}
+
+@media (max-width: 480px) {
+  .sound-toggle-label {
+    display: none;
+  }
+}
+
 /* Editor Window */
 .editor-panel {
   background: var(--bg-input);
