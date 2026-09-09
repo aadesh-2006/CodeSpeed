@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import Performance from '../models/Performance.js';
 import { evaluateBadges } from '../utils/badgeRules.js';
 import { sendVerificationEmail } from '../services/emailService.js';
+import { calculateDailyStreak, isValidTimezone } from '../utils/streakCalculator.js';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const usernameRegex = /^[\p{L}\p{N}_]{3,30}$/u;
@@ -514,6 +515,11 @@ export const updateProfile = async (req, res) => {
       user.practiceStatsVisibility = normalizedVisibility;
     }
 
+    // 5. Update Timezone if valid
+    if (req.body?.timezone && isValidTimezone(req.body.timezone)) {
+      user.timezone = req.body.timezone.trim();
+    }
+
     await user.save();
 
     return res.status(200).json({
@@ -763,6 +769,24 @@ export const getPublicProfile = async (req, res) => {
       };
     }
 
+    // 3. Daily Streak Data (Always Public, calculated using profile owner's timezone)
+    const allSessionDocs = await Performance.find(
+      { userId: user._id },
+      { createdAt: 1 }
+    ).sort({ createdAt: 1 });
+
+    const allTimestamps = allSessionDocs.map((p) => p.createdAt);
+    const ownerTimezone = user.timezone || 'UTC';
+    const streakMetrics = calculateDailyStreak(allTimestamps, { timeZone: ownerTimezone });
+
+    const publicStreak = {
+      currentStreak: streakMetrics.currentStreak,
+      longestStreak: streakMetrics.longestStreak,
+      activeToday: streakMetrics.activeToday,
+      today: streakMetrics.today,
+      recentDays: streakMetrics.recentDays,
+    };
+
     return res.status(200).json({
       status: 'success',
       data: {
@@ -771,6 +795,7 @@ export const getPublicProfile = async (req, res) => {
         bio: user.bio || '',
         profilePhoto: user.profilePhoto || null,
         isOwner,
+        streak: publicStreak,
         ranked: {
           summary: rankedSummary,
           badges: rankedBadges,

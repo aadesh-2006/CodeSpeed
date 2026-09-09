@@ -194,10 +194,27 @@ export const calculateDailyStreak = (performanceTimestamps = [], options = {}) =
   };
 };
 
+/**
+ * Check if a given timezone string is a valid IANA timezone.
+ *
+ * @param {string} tz
+ * @returns {boolean}
+ */
+export const isValidTimezone = (tz) => {
+  if (!tz || typeof tz !== 'string' || tz.length > 64) return false;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export default {
   formatDateInTimezone,
   daysDifference,
   addDays,
   getDayLabel,
   calculateDailyStreak,
+  isValidTimezone,
 };

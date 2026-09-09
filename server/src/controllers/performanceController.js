@@ -4,8 +4,9 @@ import Performance, {
   VALID_TIMERS,
   PERFORMANCE_MODES,
 } from '../models/Performance.js';
+import User from '../models/User.js';
 import { evaluateBadges } from '../utils/badgeRules.js';
-import { calculateDailyStreak } from '../utils/streakCalculator.js';
+import { calculateDailyStreak, isValidTimezone } from '../utils/streakCalculator.js';
 
 export const SORT_OPTIONS = {
   newest: { createdAt: -1 },
@@ -604,6 +605,11 @@ export const getUserStreak = async (req, res) => {
     }
 
     const { timezone } = req.query || {};
+
+    // If valid timezone is provided by authenticated user, update their stored timezone asynchronously
+    if (timezone && isValidTimezone(timezone)) {
+      User.findByIdAndUpdate(userId, { timezone }).exec().catch(() => {});
+    }
 
     // Query all completed performance sessions for this user (indexed by userId and createdAt)
     const records = await Performance.find(

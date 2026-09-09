@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import BadgesGrid from './BadgesGrid';
+import StreakCard from './StreakCard';
 import WpmProgressionGraph from './WpmProgressionGraph';
 import { formatTime } from '../utils/typingMetrics';
 
@@ -109,6 +110,11 @@ export function PublicProfile({ username, onNavigateHome, onNavigateSettings }) 
               </p>
             </div>
           </div>
+
+          {/* Daily Streak Section (Always Public) */}
+          {profile.streak && (
+            <StreakCard streak={profile.streak} />
+          )}
 
           {/* Mode-Specific Performance Section */}
           <div className={`profile-section ${isRanked ? 'ranked-theme' : 'practice-theme'}`}>

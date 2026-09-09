@@ -588,4 +588,214 @@ describe('Daily Typing Streak System Tests (Unified Ranked + Practice)', () => {
       assert.equal(rb.data.longestStreak, 1);
     });
   });
+
+  describe('Public Profile Streak Integration Tests', () => {
+    test('public profile contains streak calculated for profile owner', async () => {
+      const { getPublicProfile } = await import('../src/controllers/authController.js');
+
+      const today = new Date();
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'javascript',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 75,
+        accuracy: 98,
+        correctChars: 300,
+        incorrectChars: 2,
+        elapsedSeconds: 60,
+        snippetId: 'js-1',
+        createdAt: today,
+      });
+
+      let resCode = null;
+      let resData = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resData = d; } };
+        },
+      };
+
+      // Unauthenticated visitor
+      await getPublicProfile({ params: { username: userA.username } }, res);
+      assert.equal(resCode, 200);
+      assert.ok(resData.data.streak);
+      assert.equal(resData.data.streak.activeToday, true);
+      assert.equal(resData.data.streak.currentStreak, 1);
+      assert.equal(resData.data.streak.longestStreak, 1);
+      assert.ok(Array.isArray(resData.data.streak.recentDays));
+      assert.equal(resData.data.streak.recentDays.length, 7);
+    });
+
+    test('another authenticated visitor sees profile owner streak (not their own)', async () => {
+      const { getPublicProfile } = await import('../src/controllers/authController.js');
+
+      const today = new Date();
+      const yesterday = new Date(Date.now() - 86400000);
+
+      // User A has 2-day streak
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 80,
+        accuracy: 99,
+        correctChars: 320,
+        incorrectChars: 1,
+        elapsedSeconds: 60,
+        snippetId: 'py-1',
+        createdAt: yesterday,
+      });
+      await Performance.create({
+        userId: userA._id,
+        mode: 'practice',
+        language: 'javascript',
+        difficulty: 'easy',
+        timerSeconds: 30,
+        wpm: 70,
+        accuracy: 97,
+        correctChars: 180,
+        incorrectChars: 2,
+        elapsedSeconds: 30,
+        snippetId: 'js-1',
+        createdAt: today,
+      });
+
+      let resCode = null;
+      let resData = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resData = d; } };
+        },
+      };
+
+      // User B visits User A's profile
+      await getPublicProfile({ params: { username: userA.username }, user: { id: userB._id.toString() } }, res);
+      assert.equal(resCode, 200);
+      assert.equal(resData.data.isOwner, false);
+      assert.equal(resData.data.streak.currentStreak, 2);
+      assert.equal(resData.data.streak.longestStreak, 2);
+      assert.equal(resData.data.streak.activeToday, true);
+
+      // User A visits User B's profile
+      await getPublicProfile({ params: { username: userB.username }, user: { id: userA._id.toString() } }, res);
+      assert.equal(resCode, 200);
+      assert.equal(resData.data.isOwner, false);
+      assert.equal(resData.data.streak.currentStreak, 0);
+      assert.equal(resData.data.streak.longestStreak, 0);
+      assert.equal(resData.data.streak.activeToday, false);
+    });
+
+    test('Practice private setting does NOT hide or affect the public streak', async () => {
+      const { getPublicProfile } = await import('../src/controllers/authController.js');
+
+      // Ensure User A is private
+      await User.updateOne({ _id: userA._id }, { practiceStatsVisibility: 'private' });
+
+      const today = new Date();
+      // User A completed only Practice sessions
+      await Performance.create({
+        userId: userA._id,
+        mode: 'practice',
+        language: 'c',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 65,
+        accuracy: 96,
+        correctChars: 260,
+        incorrectChars: 5,
+        elapsedSeconds: 60,
+        snippetId: 'c-1',
+        createdAt: today,
+      });
+
+      let resCode = null;
+      let resData = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resData = d; } };
+        },
+      };
+
+      // Unauthenticated visitor
+      await getPublicProfile({ params: { username: userA.username } }, res);
+      assert.equal(resCode, 200);
+      // Practice stats are hidden (null)
+      assert.equal(resData.data.practice, null);
+      // But Streak is fully present and public!
+      assert.ok(resData.data.streak);
+      assert.equal(resData.data.streak.activeToday, true);
+      assert.equal(resData.data.streak.currentStreak, 1);
+      assert.equal(resData.data.streak.longestStreak, 1);
+    });
+
+    test('calculates public streak in profile owner timezone', async () => {
+      const { getPublicProfile } = await import('../src/controllers/authController.js');
+
+      // Set userA timezone to Asia/Tokyo (UTC+9)
+      await User.updateOne({ _id: userA._id }, { timezone: 'Asia/Tokyo' });
+
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'javascript',
+        difficulty: 'hard',
+        timerSeconds: 60,
+        wpm: 90,
+        accuracy: 99,
+        correctChars: 360,
+        incorrectChars: 1,
+        elapsedSeconds: 60,
+        snippetId: 'ts-1',
+        createdAt: new Date('2026-09-08T16:00:00.000Z'),
+      });
+
+      let resCode = null;
+      let resData = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resData = d; } };
+        },
+      };
+
+      await getPublicProfile({ params: { username: userA.username } }, res);
+      assert.equal(resCode, 200);
+      assert.ok(resData.data.streak);
+      assert.equal(resData.data.streak.recentDays.length, 7);
+    });
+
+    test('security audit: public profile never exposes sensitive fields or credentials', async () => {
+      const { getPublicProfile } = await import('../src/controllers/authController.js');
+
+      let resCode = null;
+      let resData = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resData = d; } };
+        },
+      };
+
+      await getPublicProfile({ params: { username: userA.username } }, res);
+      assert.equal(resCode, 200);
+      const data = resData.data;
+
+      assert.equal(data.email, undefined);
+      assert.equal(data.passwordHash, undefined);
+      assert.equal(data.verificationTokenHash, undefined);
+      assert.equal(data.verificationTokenExpires, undefined);
+      assert.equal(data.lastVerificationEmailSentAt, undefined);
+      assert.equal(data.practiceStatsVisibility, undefined);
+      assert.equal(data._id, undefined);
+      assert.equal(data.id, undefined);
+      assert.equal(data.timezone, undefined);
+    });
+  });
 });

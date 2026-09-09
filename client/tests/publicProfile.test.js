@@ -1,5 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import React from 'react';
+import ReactDOMServer from 'react-dom/server';
+import { createServer } from 'vite';
 
 describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
   const mockRankedData = {
@@ -48,11 +51,28 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
     ],
   };
 
+  const mockStreakData = {
+    currentStreak: 7,
+    longestStreak: 14,
+    activeToday: true,
+    today: '2026-09-09',
+    recentDays: [
+      { date: '2026-09-03', dayLabel: 'Thu', active: true, isToday: false },
+      { date: '2026-09-04', dayLabel: 'Fri', active: true, isToday: false },
+      { date: '2026-09-05', dayLabel: 'Sat', active: true, isToday: false },
+      { date: '2026-09-06', dayLabel: 'Sun', active: true, isToday: false },
+      { date: '2026-09-07', dayLabel: 'Mon', active: true, isToday: false },
+      { date: '2026-09-08', dayLabel: 'Tue', active: true, isToday: false },
+      { date: '2026-09-09', dayLabel: 'Wed', active: true, isToday: true },
+    ],
+  };
+
   // 1. Own profile + Practice private
   const mockOwnProfilePracticePrivate = {
     username: 'myuser',
     memberSince: '2026-08-01T00:00:00.000Z',
     isOwner: true,
+    streak: mockStreakData,
     ranked: mockRankedData,
     practice: mockPracticeData,
   };
@@ -62,6 +82,7 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
     username: 'myuser',
     memberSince: '2026-08-01T00:00:00.000Z',
     isOwner: true,
+    streak: mockStreakData,
     ranked: mockRankedData,
     practice: mockPracticeData,
   };
@@ -71,6 +92,7 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
     username: 'otheruser',
     memberSince: '2026-08-01T00:00:00.000Z',
     isOwner: false,
+    streak: mockStreakData,
     ranked: mockRankedData,
     practice: null, // Private practice hidden from others
   };
@@ -80,9 +102,35 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
     username: 'otheruser',
     memberSince: '2026-08-01T00:00:00.000Z',
     isOwner: false,
+    streak: mockStreakData,
     ranked: mockRankedData,
     practice: mockPracticeData,
   };
+
+  test('Public profile includes Daily Streak data for both owner and visitors', () => {
+    const ownProfile = mockOwnProfilePracticePrivate;
+    const otherProfile = mockOtherProfilePracticePrivate;
+
+    assert.ok(ownProfile.streak, 'Owner profile must include streak data');
+    assert.equal(ownProfile.streak.currentStreak, 7);
+    assert.equal(ownProfile.streak.longestStreak, 14);
+    assert.equal(ownProfile.streak.activeToday, true);
+
+    assert.ok(otherProfile.streak, 'Visitor profile must include streak data');
+    assert.equal(otherProfile.streak.currentStreak, 7);
+    assert.equal(otherProfile.streak.longestStreak, 14);
+    assert.equal(otherProfile.streak.activeToday, true);
+  });
+
+  test('Daily Streak remains publicly visible when Practice statistics are private', () => {
+    const profile = mockOtherProfilePracticePrivate;
+    assert.equal(profile.isOwner, false);
+    assert.equal(profile.practice, null, 'Practice stats should be hidden');
+    assert.ok(profile.streak, 'Daily Streak must remain visible even when practice stats are private');
+    assert.equal(profile.streak.currentStreak, 7);
+    assert.equal(profile.streak.longestStreak, 14);
+    assert.equal(profile.streak.recentDays.length, 7);
+  });
 
   test('Public profile data separates Ranked and Practice statistics completely', () => {
     const profile = mockOwnProfilePracticePublic;
@@ -180,6 +228,29 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
       assert.equal(p.practiceStatsVisibility, undefined);
       assert.equal(p._id, undefined);
       assert.equal(p.userId, undefined);
+    }
+  });
+
+  test('StreakCard renders inside PublicProfile with active streak and 7-day indicators', async () => {
+    const viteServer = await createServer({
+      server: { middlewareMode: true },
+      appType: 'custom',
+    });
+    try {
+      const streakModule = await viteServer.ssrLoadModule('./src/components/StreakCard.jsx');
+      const StreakCard = streakModule.StreakCard;
+
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(StreakCard, { streak: mockStreakData })
+      );
+
+      assert.ok(html.includes('Daily Streak'));
+      assert.ok(html.includes('7'));
+      assert.ok(html.includes('14'));
+      assert.ok(html.includes('Active Today'));
+      assert.ok(html.includes('recent-days-row'));
+    } finally {
+      await viteServer.close();
     }
   });
 });
