@@ -9,6 +9,9 @@ import {
 import {
   getSoundEnabled,
   toggleSound,
+  getSoundVolume,
+  setSoundVolume,
+  initAudio,
   playKeySound,
 } from '../utils/keyboardSound';
 
@@ -18,6 +21,7 @@ export function TypingTest({ snippet, duration = 60, language = 'javascript', on
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [hasStarted, setHasStarted] = useState(false);
   const [soundEnabled, setSoundEnabledState] = useState(getSoundEnabled);
+  const [soundVolume, setSoundVolumeState] = useState(getSoundVolume);
 
   const textareaRef = useRef(null);
   const timerRef = useRef(null);
@@ -125,12 +129,23 @@ export function TypingTest({ snippet, duration = 60, language = 'javascript', on
   const handleToggleSound = () => {
     const nextState = toggleSound();
     setSoundEnabledState(nextState);
+    if (nextState) {
+      initAudio().catch(() => {});
+    }
+  };
+
+  const handleVolumeChange = (e) => {
+    const nextVal = parseInt(e.target.value, 10);
+    const clamped = setSoundVolume(nextVal);
+    setSoundVolumeState(clamped);
+    initAudio().catch(() => {});
   };
 
   const handleInputChange = (e) => {
     if (timeLeft === 0) return;
     if (!hasStarted) {
       setHasStarted(true);
+      initAudio().catch(() => {});
     }
     setTypedCode(e.target.value);
   };
@@ -140,6 +155,7 @@ export function TypingTest({ snippet, duration = 60, language = 'javascript', on
 
     if (!hasStarted) {
       setHasStarted(true);
+      initAudio().catch(() => {});
     }
 
     // Play subtle mechanical keyboard sound on legitimate typing input
@@ -193,8 +209,9 @@ export function TypingTest({ snippet, duration = 60, language = 'javascript', on
     }
   };
 
-  // Clicking on code display redirects focus to hidden textarea
+  // Clicking on code display redirects focus to hidden textarea and resumes audio context
   const handleCodeAreaClick = () => {
+    initAudio().catch(() => {});
     if (textareaRef.current) {
       textareaRef.current.focus();
     }
@@ -220,28 +237,45 @@ export function TypingTest({ snippet, duration = 60, language = 'javascript', on
         </div>
 
         <div className="test-actions">
-          <button
-            type="button"
-            className={`btn btn-secondary btn-sm sound-toggle-btn ${soundEnabled ? 'sound-active' : 'sound-muted'}`}
-            onClick={handleToggleSound}
-            aria-label={soundEnabled ? 'Mute keyboard sound' : 'Enable keyboard sound'}
-            title={soundEnabled ? 'Sound: On' : 'Sound: Off'}
-          >
-            {soundEnabled ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                <line x1="23" y1="9" x2="17" y2="15" />
-                <line x1="17" y1="9" x2="23" y2="15" />
-              </svg>
+          <div className="sound-control-group">
+            <button
+              type="button"
+              className={`btn btn-secondary btn-sm sound-toggle-btn ${soundEnabled && soundVolume > 0 ? 'sound-active' : 'sound-muted'}`}
+              onClick={handleToggleSound}
+              aria-label={soundEnabled ? 'Mute keyboard sound' : 'Enable keyboard sound'}
+              title={soundEnabled ? 'Sound: On' : 'Sound: Off'}
+            >
+              {soundEnabled && soundVolume > 0 ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                  <line x1="23" y1="9" x2="17" y2="15" />
+                  <line x1="17" y1="9" x2="23" y2="15" />
+                </svg>
+              )}
+              <span className="sound-toggle-label">{soundEnabled ? `${soundVolume}%` : 'Muted'}</span>
+            </button>
+            {soundEnabled && (
+              <div className="sound-slider-wrapper">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={soundVolume}
+                  onChange={handleVolumeChange}
+                  className="sound-volume-slider"
+                  aria-label="Keyboard sound volume"
+                  title={`Volume: ${soundVolume}%`}
+                />
+              </div>
             )}
-            <span className="sound-toggle-label">{soundEnabled ? 'Sound' : 'Muted'}</span>
-          </button>
+          </div>
           <button type="button" className="btn btn-secondary btn-sm" onClick={onRestart} title="Restart test">
             &#x21BB; Restart
           </button>

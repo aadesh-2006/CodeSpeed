@@ -181,6 +181,7 @@ describe('Component-Level Regression Tests', () => {
       // 3. Verify action buttons (Sound toggle, Restart & Settings/Cancel)
       assert.ok(html.includes('sound-toggle-btn'), 'Rendered HTML should include sound toggle button');
       assert.ok(html.includes('Sound: On') || html.includes('Sound: Off'), 'Sound button should display sound title');
+      assert.ok(html.includes('sound-volume-slider'), 'Rendered HTML should include sound volume slider');
       assert.ok(html.includes('Restart'), 'Rendered HTML should include Restart button');
       assert.ok(html.includes('Settings'), 'Rendered HTML should include Settings button');
     });

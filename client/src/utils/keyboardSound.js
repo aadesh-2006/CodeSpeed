@@ -4,6 +4,10 @@
  */
 
 const STORAGE_KEY = 'codespeed_sound_enabled';
+const VOLUME_STORAGE_KEY = 'codespeed_sound_volume';
+
+export const DEFAULT_SOUND_VOLUME = 70;
+export const MAX_SAFE_VOLUME = 0.40;
 
 // Singleton AudioContext reference
 let audioCtx = null;
@@ -47,7 +51,40 @@ export const toggleSound = () => {
 };
 
 /**
- * Lazily initialize and return the AudioContext.
+ * Get sound volume level (0 - 100, defaults to 70).
+ */
+export const getSoundVolume = () => {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return DEFAULT_SOUND_VOLUME;
+  }
+  try {
+    const saved = window.localStorage.getItem(VOLUME_STORAGE_KEY);
+    if (saved === null) return DEFAULT_SOUND_VOLUME;
+    const parsed = parseInt(saved, 10);
+    return !isNaN(parsed) && parsed >= 0 && parsed <= 100 ? parsed : DEFAULT_SOUND_VOLUME;
+  } catch {
+    return DEFAULT_SOUND_VOLUME;
+  }
+};
+
+/**
+ * Set sound volume level (0 - 100) and persist to localStorage.
+ */
+export const setSoundVolume = (vol) => {
+  const num = Number(vol);
+  const clamped = Math.max(0, Math.min(100, isNaN(num) ? DEFAULT_SOUND_VOLUME : Math.round(num)));
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(VOLUME_STORAGE_KEY, String(clamped));
+    } catch {
+      // Ignore localStorage errors
+    }
+  }
+  return clamped;
+};
+
+/**
+ * Lazily initialize and return the AudioContext singleton.
  */
 export const getAudioContext = () => {
   if (typeof window === 'undefined') return null;
@@ -55,7 +92,7 @@ export const getAudioContext = () => {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return null;
 
-  if (!audioCtx || audioCtx.state === 'closed') {
+  if (!audioCtx || audioCtx.state === 'closed' || !(audioCtx instanceof AudioContextClass)) {
     try {
       audioCtx = new AudioContextClass();
     } catch {
@@ -69,6 +106,34 @@ export const getAudioContext = () => {
 
   return audioCtx;
 };
+
+/**
+ * Reset audio context singleton (used in test isolation).
+ */
+export const _resetAudioContext = () => {
+  audioCtx = null;
+};
+
+/**
+ * Explicitly initialize and/or resume the AudioContext from a user interaction.
+ * Returns a Promise that resolves to true if running.
+ */
+export const initAudio = async () => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+    return ctx.state === 'running';
+  } catch {
+    return false;
+  }
+};
+
+export const resumeAudio = initAudio;
 
 // Subtle frequency variations for keypress acoustic diversity
 const KEY_VARIATION_PROFILES = [
@@ -87,41 +152,48 @@ const KEY_VARIATION_PROFILES = [
 export const playKeySound = (key = '', options = {}) => {
   if (!getSoundEnabled()) return false;
 
+  const volPercent = options.volumePercent !== undefined ? options.volumePercent : getSoundVolume();
+  if (volPercent <= 0) return false;
+
   const ctx = getAudioContext();
   if (!ctx) return false;
 
   try {
     const now = ctx.currentTime;
-    const baseVolume = options.volume !== undefined ? options.volume : 0.09;
+    const baseVolume = options.volume !== undefined
+      ? options.volume
+      : (MAX_SAFE_VOLUME * (volPercent / 100));
+
+    if (baseVolume <= 0) return false;
 
     // Determine sound profile based on key type
     let startFreq = 420;
     let endFreq = 140;
-    let duration = 0.032;
+    let duration = 0.034;
     let clickBandpassFreq = 2300;
-    let noiseGainAmount = 0.06;
+    let noiseGainAmount = 0.18;
 
     if (key === 'Backspace' || key === 'Delete') {
       // Slightly softer, deeper thock
       startFreq = 260;
       endFreq = 110;
-      duration = 0.036;
+      duration = 0.038;
       clickBandpassFreq = 1600;
-      noiseGainAmount = 0.04;
+      noiseGainAmount = 0.14;
     } else if (key === 'Enter') {
       // Deeper stabilizer sound
       startFreq = 320;
       endFreq = 95;
-      duration = 0.042;
+      duration = 0.044;
       clickBandpassFreq = 1800;
-      noiseGainAmount = 0.07;
+      noiseGainAmount = 0.22;
     } else if (key === ' ') {
       // Spacebar stabilizer thock
       startFreq = 340;
       endFreq = 120;
-      duration = 0.038;
+      duration = 0.040;
       clickBandpassFreq = 1950;
-      noiseGainAmount = 0.065;
+      noiseGainAmount = 0.20;
     } else {
       // Standard alphanumeric key with subtle randomized variation
       const profile = KEY_VARIATION_PROFILES[Math.floor(Math.random() * KEY_VARIATION_PROFILES.length)];
@@ -170,7 +242,7 @@ export const playKeySound = (key = '', options = {}) => {
     osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
 
     const oscGain = ctx.createGain();
-    oscGain.gain.setValueAtTime(0.35, now);
+    oscGain.gain.setValueAtTime(0.50, now);
     oscGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
     osc.connect(oscGain);
@@ -178,18 +250,6 @@ export const playKeySound = (key = '', options = {}) => {
 
     osc.start(now);
     osc.stop(now + duration + 0.005);
-
-    // Clean up nodes after playback
-    setTimeout(() => {
-      try {
-        masterGain.disconnect();
-        noiseGain.disconnect();
-        noiseFilter.disconnect();
-        oscGain.disconnect();
-      } catch {
-        // Safe disposal
-      }
-    }, Math.ceil((duration + 0.02) * 1000));
 
     return true;
   } catch {
@@ -201,5 +261,12 @@ export default {
   getSoundEnabled,
   setSoundEnabled,
   toggleSound,
+  getSoundVolume,
+  setSoundVolume,
+  DEFAULT_SOUND_VOLUME,
+  MAX_SAFE_VOLUME,
+  getAudioContext,
+  initAudio,
+  resumeAudio,
   playKeySound,
 };
