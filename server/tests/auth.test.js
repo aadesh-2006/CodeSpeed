@@ -390,10 +390,10 @@ describe('Authentication & User Profile API Tests', () => {
       assert.equal(migratedUser.emailVerified, true);
     });
 
-    test('production mode with missing SMTP configuration fails signup with 503 and rolls back user document', async () => {
+    test('production mode with missing RESEND_API_KEY fails signup with 503 and rolls back user document', async () => {
       const prevNodeEnv = process.env.NODE_ENV;
-      const prevHost = process.env.SMTP_HOST;
-      delete process.env.SMTP_HOST;
+      const prevKey = process.env.RESEND_API_KEY;
+      delete process.env.RESEND_API_KEY;
       process.env.NODE_ENV = 'production';
 
       try {
@@ -417,7 +417,7 @@ describe('Authentication & User Profile API Tests', () => {
         const rolledBackUser = await User.findOne({ email: 'failed_email@example.com' });
         assert.equal(rolledBackUser, null);
 
-        // Verify that another signup with same credentials succeeds once SMTP is working
+        // Verify that another signup with same credentials succeeds once environment allows simulation
         process.env.NODE_ENV = 'test';
         const retryRes = await fetch(`${baseUrl}/api/auth/signup`, {
           method: 'POST',
@@ -434,14 +434,14 @@ describe('Authentication & User Profile API Tests', () => {
         assert.equal(retryData.requiresVerification, true);
       } finally {
         process.env.NODE_ENV = prevNodeEnv;
-        if (prevHost) process.env.SMTP_HOST = prevHost;
+        if (prevKey) process.env.RESEND_API_KEY = prevKey;
       }
     });
 
-    test('production mode with missing SMTP configuration returns 503 during resend-verification', async () => {
+    test('production mode with missing RESEND_API_KEY returns 503 during resend-verification', async () => {
       const prevNodeEnv = process.env.NODE_ENV;
-      const prevHost = process.env.SMTP_HOST;
-      delete process.env.SMTP_HOST;
+      const prevKey = process.env.RESEND_API_KEY;
+      delete process.env.RESEND_API_KEY;
       process.env.NODE_ENV = 'production';
 
       try {
@@ -464,13 +464,158 @@ describe('Authentication & User Profile API Tests', () => {
         assert.match(data.message, /unable to send verification email/i);
       } finally {
         process.env.NODE_ENV = prevNodeEnv;
-        if (prevHost) process.env.SMTP_HOST = prevHost;
+        if (prevKey) process.env.RESEND_API_KEY = prevKey;
+      }
+    });
+
+    test('Resend HTTP API mock: verifies endpoint, auth header, payload structure, and 200 delivery', async () => {
+      const originalFetch = globalThis.fetch;
+      const prevKey = process.env.RESEND_API_KEY;
+      const prevFrom = process.env.EMAIL_FROM;
+
+      process.env.RESEND_API_KEY = 're_mock_test_key_12345';
+      process.env.EMAIL_FROM = 'CodeSpeed <test@codespeed.app>';
+
+      let capturedUrl = null;
+      let capturedOptions = null;
+
+      // Intercept calls to api.resend.com
+      globalThis.fetch = async (url, options) => {
+        if (typeof url === 'string' && url.includes('api.resend.com')) {
+          capturedUrl = url;
+          capturedOptions = options;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ id: 'resend_email_id_999' }),
+          };
+        }
+        return originalFetch(url, options);
+      };
+
+      try {
+        const res = await fetch(`${baseUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: 'resend_mock_user',
+            email: 'resend_mock@example.com',
+            password: 'Password123!',
+          }),
+        });
+
+        assert.equal(res.status, 201);
+        const data = await res.json();
+        assert.equal(data.status, 'success');
+        assert.equal(data.requiresVerification, true);
+
+        // Verify Resend HTTP API call details
+        assert.equal(capturedUrl, 'https://api.resend.com/emails');
+        assert.equal(capturedOptions.method, 'POST');
+        assert.equal(capturedOptions.headers.Authorization, 'Bearer re_mock_test_key_12345');
+        assert.equal(capturedOptions.headers['Content-Type'], 'application/json');
+
+        const body = JSON.parse(capturedOptions.body);
+        assert.equal(body.from, 'CodeSpeed <test@codespeed.app>');
+        assert.deepEqual(body.to, ['resend_mock@example.com']);
+        assert.match(body.subject, /Verify your CodeSpeed account/i);
+        assert.ok(body.html.includes('Verify Email Address'));
+        assert.ok(body.html.includes('resend_mock_user'));
+        assert.ok(body.text.includes('resend_mock_user'));
+      } finally {
+        globalThis.fetch = originalFetch;
+        if (prevKey) process.env.RESEND_API_KEY = prevKey; else delete process.env.RESEND_API_KEY;
+        if (prevFrom) process.env.EMAIL_FROM = prevFrom; else delete process.env.EMAIL_FROM;
+      }
+    });
+
+    test('Resend HTTP API mock: non-2xx response from Resend fails signup with 503 and rolls back user', async () => {
+      const originalFetch = globalThis.fetch;
+      const prevKey = process.env.RESEND_API_KEY;
+
+      process.env.RESEND_API_KEY = 're_mock_test_key_12345';
+
+      // Simulate Resend 422 Unprocessable Entity
+      globalThis.fetch = async (url, options) => {
+        if (typeof url === 'string' && url.includes('api.resend.com')) {
+          return {
+            ok: false,
+            status: 422,
+            json: async () => ({ message: 'Domain not verified', name: 'validation_error' }),
+          };
+        }
+        return originalFetch(url, options);
+      };
+
+      try {
+        const res = await fetch(`${baseUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: 'resend_fail_user',
+            email: 'resend_fail@example.com',
+            password: 'Password123!',
+          }),
+        });
+
+        assert.equal(res.status, 503);
+        const data = await res.json();
+        assert.equal(data.status, 'error');
+        assert.equal(data.code, 'EMAIL_DELIVERY_FAILED');
+
+        // Confirm rollback
+        const user = await User.findOne({ email: 'resend_fail@example.com' });
+        assert.equal(user, null);
+      } finally {
+        globalThis.fetch = originalFetch;
+        if (prevKey) process.env.RESEND_API_KEY = prevKey; else delete process.env.RESEND_API_KEY;
+      }
+    });
+
+    test('Resend HTTP API mock: network timeout fails fast with 503 and rolls back user', async () => {
+      const originalFetch = globalThis.fetch;
+      const prevKey = process.env.RESEND_API_KEY;
+
+      process.env.RESEND_API_KEY = 're_mock_test_key_12345';
+
+      // Simulate TimeoutError
+      globalThis.fetch = async (url, options) => {
+        if (typeof url === 'string' && url.includes('api.resend.com')) {
+          const timeoutErr = new Error('The operation was aborted due to timeout');
+          timeoutErr.name = 'TimeoutError';
+          throw timeoutErr;
+        }
+        return originalFetch(url, options);
+      };
+
+      try {
+        const res = await fetch(`${baseUrl}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: 'resend_timeout_user',
+            email: 'resend_timeout@example.com',
+            password: 'Password123!',
+          }),
+        });
+
+        assert.equal(res.status, 503);
+        const data = await res.json();
+        assert.equal(data.status, 'error');
+        assert.equal(data.code, 'EMAIL_DELIVERY_FAILED');
+
+        // Confirm rollback
+        const user = await User.findOne({ email: 'resend_timeout@example.com' });
+        assert.equal(user, null);
+      } finally {
+        globalThis.fetch = originalFetch;
+        if (prevKey) process.env.RESEND_API_KEY = prevKey; else delete process.env.RESEND_API_KEY;
       }
     });
 
     test('security audit: error responses never leak stack traces, transport info, or credentials', async () => {
       const prevNodeEnv = process.env.NODE_ENV;
-      delete process.env.SMTP_HOST;
+      delete process.env.RESEND_API_KEY;
       process.env.NODE_ENV = 'production';
 
       try {
@@ -489,6 +634,7 @@ describe('Authentication & User Profile API Tests', () => {
         assert.equal(text.includes('jwt'), false);
         assert.equal(text.includes('mongodb'), false);
         assert.equal(text.includes('nodemailer'), false);
+        assert.equal(text.includes('re_'), false); // No Resend key prefix
         assert.equal(text.includes('stack'), false);
         assert.equal(text.includes('    at '), false); // No stack traces
       } finally {

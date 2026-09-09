@@ -1,5 +1,3 @@
-import nodemailer from 'nodemailer';
-
 // In-memory mailbox used during testing and development simulation
 export const testMailbox = [];
 
@@ -20,32 +18,7 @@ export const getClientBaseUrl = () => {
 };
 
 /**
- * Creates and returns the active Nodemailer transport instance.
- */
-export const createTransporter = () => {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
-
-  if (host && user && pass) {
-    return nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: {
-        user,
-        pass,
-      },
-    });
-  }
-
-  return null;
-};
-
-/**
- * Sends an email verification link to a user.
+ * Sends an email verification link to a user via the Resend HTTPS API.
  *
  * @param {string} toEmail - Recipient email address
  * @param {string} username - Recipient username
@@ -54,7 +27,9 @@ export const createTransporter = () => {
 export const sendVerificationEmail = async (toEmail, username, rawToken) => {
   const baseUrl = getClientBaseUrl();
   const verificationUrl = `${baseUrl}/#/verify-email?token=${rawToken}`;
-  const fromEmail = process.env.EMAIL_FROM || 'CodeSpeed <noreply@codespeed.app>';
+  const fromEmail = process.env.EMAIL_FROM || 'CodeSpeed <onboarding@resend.dev>';
+  const apiKey = process.env.RESEND_API_KEY;
+  const isProduction = process.env.NODE_ENV === 'production';
 
   const subject = 'Verify your CodeSpeed account';
   const textBody = `Hello ${username},
@@ -116,14 +91,12 @@ The CodeSpeed Team`;
 </html>
 `;
 
-  const isProduction = process.env.NODE_ENV === 'production';
-  const transporter = createTransporter();
-
-  if (!transporter) {
+  // Strict check: if no API key is configured
+  if (!apiKey) {
     if (isProduction) {
-      console.error('[EmailService] SMTP configuration missing in production environment.');
+      console.error('[EmailService] Resend API key (RESEND_API_KEY) missing in production environment.');
       const err = new Error('Email service is currently unavailable.');
-      err.code = 'SMTP_NOT_CONFIGURED';
+      err.code = 'EMAIL_DELIVERY_FAILED';
       throw err;
     }
 
@@ -139,15 +112,33 @@ The CodeSpeed Team`;
     return { success: true, simulated: true };
   }
 
-  // Execute SMTP delivery through configured transporter
+  // Execute delivery through Resend HTTPS API with fast-abort timeout
   try {
-    const info = await transporter.sendMail({
-      from: fromEmail,
-      to: toEmail,
-      subject,
-      text: textBody,
-      html: htmlBody,
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'CodeSpeed-Server',
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [toEmail],
+        subject,
+        text: textBody,
+        html: htmlBody,
+      }),
+      signal: AbortSignal.timeout(10000), // 10-second fast-abort timeout
     });
+
+    if (!response.ok) {
+      console.error('[EmailService] Resend HTTP API rejected request with status:', response.status);
+      const deliveryErr = new Error('Failed to deliver verification email through email provider.');
+      deliveryErr.code = 'EMAIL_DELIVERY_FAILED';
+      throw deliveryErr;
+    }
+
+    const data = await response.json();
 
     if (process.env.NODE_ENV === 'test') {
       testMailbox.push({
@@ -159,10 +150,14 @@ The CodeSpeed Team`;
       });
     }
 
-    return { success: true, messageId: info?.messageId };
+    return { success: true, messageId: data?.id };
   } catch (err) {
-    console.error('[EmailService] SMTP delivery rejected:', err.message || 'Unknown error');
-    const deliveryErr = new Error('Failed to deliver verification email through SMTP provider.');
+    if (err.code === 'EMAIL_DELIVERY_FAILED') {
+      throw err;
+    }
+    const isTimeout = err.name === 'TimeoutError' || err.name === 'AbortError';
+    console.error('[EmailService] Resend delivery failure:', isTimeout ? 'Request timed out after 10s' : 'Network/connection error');
+    const deliveryErr = new Error('Failed to deliver verification email through email provider.');
     deliveryErr.code = 'EMAIL_DELIVERY_FAILED';
     throw deliveryErr;
   }
@@ -172,5 +167,4 @@ export default {
   sendVerificationEmail,
   testMailbox,
   getClientBaseUrl,
-  createTransporter,
 };
