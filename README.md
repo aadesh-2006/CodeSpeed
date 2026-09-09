@@ -15,6 +15,7 @@ CodeSpeed is a developer-centric typing speed tracker designed specifically for 
 - Modern vanilla CSS design system
 - Client API service with JWT authentication state management (`localStorage`)
 - Interactive coding typing engine with character-level accuracy and custom `Tab` indentation
+- Procedural mechanical keyboard audio system with Web Audio API playback and local volume persistence
 
 ### Backend (`server/`)
 - **Node.js**
@@ -28,7 +29,7 @@ CodeSpeed is a developer-centric typing speed tracker designed specifically for 
 ### Testing
 - **Node.js Native Test Runner (`node:test`, `node:assert`)**
 - **Backend Tests (`server/tests/`)**: Isolated integration tests using `mongodb-memory-server`
-- **Frontend Tests (`client/tests/`)**: Unit tests for pure WPM, accuracy, and character comparison logic
+- **Frontend Tests (`client/tests/`)**: Unit tests for typing engine formulas, snippet selection, streak logic, and Web Audio synthesis/playback
 
 ---
 
@@ -38,24 +39,42 @@ CodeSpeed is a developer-centric typing speed tracker designed specifically for 
 CodeSpeed/
 ├── client/                         # React + Vite frontend application
 │   ├── public/                     # Static assets & favicons
+│   │   └── sounds/
+│   │       └── keyboard/           # Procedural mechanical switch WAV assets (~19.9 KB total)
 │   ├── src/
 │   │   ├── assets/                 # Logos & icons
 │   │   ├── components/
 │   │   │   ├── AuthForm.jsx        # Login & Signup interactive form
+│   │   │   ├── BadgesGrid.jsx      # Ranked milestone badges & achievements
+│   │   │   ├── Dashboard.jsx       # Authenticated home dashboard & metrics
+│   │   │   ├── PerformanceHistory.jsx # Filterable, paginated attempt history
+│   │   │   ├── PrivacySettingsModal.jsx # Practice privacy settings modal
+│   │   │   ├── PublicProfile.jsx   # Shareable public developer profile
+│   │   │   ├── Settings.jsx        # Account & profile customization
+│   │   │   ├── StreakCard.jsx      # Daily practice streak widget & 7-day strip
+│   │   │   ├── TestResult.jsx      # Test completion summary card
 │   │   │   ├── TestSetup.jsx       # Language & timer selection UI
-│   │   │   ├── TypingTest.jsx      # Active typing test & code highlighter
-│   │   │   └── TestResult.jsx      # Test completion summary card
+│   │   │   ├── TypingTest.jsx      # Active typing test, sound controls & code editor
+│   │   │   ├── UserSearch.jsx      # Developer discovery & profile search
+│   │   │   └── WpmProgressionGraph.jsx # SVG WPM progression graph
 │   │   ├── data/
 │   │   │   └── snippets.js         # Multiline code snippets (8 languages)
 │   │   ├── services/
 │   │   │   └── api.js              # Centralized API service with JWT management
 │   │   ├── utils/
+│   │   │   ├── keyboardSound.js    # Procedural audio engine, buffer cache & volume control
 │   │   │   └── typingMetrics.js    # Pure WPM, accuracy, & diffing utilities
-│   │   ├── App.css                 # Dark-themed styling
+│   │   ├── App.css                 # Dark-themed styling & responsive design system
 │   │   ├── App.jsx                 # App entrypoint & test state machine
 │   │   ├── index.css               # Global reset & baseline styles
 │   │   └── main.jsx                # React root entrypoint
 │   ├── tests/
+│   │   ├── components.test.js      # Component prop & rendering tests
+│   │   ├── keyboardSound.test.js   # Audio engine, volume, & buffer lifecycle tests
+│   │   ├── search.test.js          # Search & discovery pure logic tests
+│   │   ├── settings.test.js        # Profile validation & security tests
+│   │   ├── snippets.test.js        # Snippet dataset & distribution tests
+│   │   ├── streak.test.js          # Streak calculation pure logic tests
 │   │   └── typingMetrics.test.js   # Unit tests for typing engine formulas
 │   ├── index.html                  # HTML entrypoint
 │   ├── package.json                # Frontend dependencies & test scripts
@@ -158,12 +177,12 @@ The Vite development server will start at:
 
 ## Running Tests
 
-### Client Unit Tests (Typing Metrics & Snippet System)
+### Client Unit Tests (Typing Metrics, Audio Engine & System Logic)
 ```bash
 cd client
 npm test
 ```
-Verifies WPM formula, accuracy percentages, character comparison, spaces/newlines/symbols, timer formatting, 72-snippet dataset integrity, difficulty filtering, and immediate-repeat prevention.
+Verifies WPM formula, accuracy percentages, character comparison, spaces/newlines/symbols, timer formatting, 72-snippet dataset integrity, difficulty filtering, search/profile logic, daily streak calculation, and procedural Web Audio buffer caching/playback.
 
 ### Backend Integration Tests (Authentication & Health)
 ```bash
@@ -216,6 +235,32 @@ $$\text{WPM} = \frac{\text{correctCharacters} / 5}{\text{elapsedMinutes}}$$
 $$\text{Accuracy} = \left(\frac{\text{correctCharacters}}{\text{totalTypedCharacters}}\right) \times 100$$
 - Expressed as a percentage rounded to 1 decimal place.
 - Returns 0% if total typed characters is 0.
+
+---
+
+## Procedural Mechanical Keyboard Audio Engine
+
+CodeSpeed features a custom procedural mechanical-keyboard audio system designed to deliver tactile acoustic feedback with zero third-party audio dependencies.
+
+> Rather than shipping large recorded sound libraries, CodeSpeed generates its keyboard audio from mathematical waveform components and compact WAV assets. This keeps the feature lightweight while giving the typing experience a distinctive mechanical character.
+
+### Procedural Waveform Synthesis Architecture
+All sound assets are generated programmatically via Node.js mathematical audio synthesis using physical modeling principles rather than external sound packs:
+
+- **Transient & Noise Elements**: Short-duration ($< 2.5\text{ ms}$) noise bursts shaped with sharp exponential decay to emulate switch slider friction and tactile leaf snap.
+- **Sinusoidal & Modal Resonances**: Multiple parallel sinusoidal frequency modes ($200\text{ Hz} - 4.2\text{ kHz}$) simulating keycap acoustic cavity resonance and switch housing bottom-out impact.
+- **Exponential Envelopes**: Tight, parameterized decay envelopes ($35\text{ ms} - 55\text{ ms}$) preventing acoustic muddiness during high-speed typing runs.
+- **Tailored Switch Profiles**:
+  - `key-01.wav` & `key-02.wav`: Standard alphanumeric keys with alternating resonant profiles for natural cadence.
+  - `space.wav`: Deeper low-mid modal body ($210\text{ Hz}$) with stabilizer wire tick.
+  - `enter.wav`: Wide stabilizer impact and acoustic keycap dispersion.
+  - `backspace.wav`: Compact modifier switch snap with fast dampening.
+
+### High-Performance Web Audio Playback
+- **Ultra-Lightweight Footprint**: The entire procedural sound suite occupies only **~19.9 KB total** across all 5 WAV assets.
+- **In-Memory Buffer Caching**: Decoded once into native Web Audio `AudioBuffer` objects on application startup/test initiation for zero runtime network requests and zero latency.
+- **Anti-Repetition Micro-Dynamics**: Each keystroke applies subtle randomized micro-jitter to playback rate ($\pm 3\%$) and gain ($\pm 3\%$) to eliminate mechanical "machine gun" repetition artifacts.
+- **User Volume Control & Persistence**: Integrated interactive slider ($0\% - 100\%$) in the test toolbar, safely clamped with clipping protection, persisted across sessions via `localStorage` (`codespeed_sound_volume`), with independent mute toggling.
 
 ---
 

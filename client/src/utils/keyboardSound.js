@@ -107,15 +107,65 @@ export const getAudioContext = () => {
   return audioCtx;
 };
 
+// In-memory decoded AudioBuffer cache
+const audioBuffers = new Map();
+let isPreloading = false;
+
+// Sample file definitions (located in public/sounds/keyboard/)
+const SAMPLE_FILES = {
+  'key-01': '/sounds/keyboard/key-01.wav',
+  'key-02': '/sounds/keyboard/key-02.wav',
+  'space': '/sounds/keyboard/space.wav',
+  'enter': '/sounds/keyboard/enter.wav',
+  'backspace': '/sounds/keyboard/backspace.wav',
+};
+
+// Round-robin counter for alphanumeric keys
+let alphaKeyCounter = 0;
+
 /**
- * Reset audio context singleton (used in test isolation).
+ * Preload and decode all mechanical keyboard audio samples into memory.
+ * Safe to call multiple times; returns cached promise if already preloading.
  */
-export const _resetAudioContext = () => {
-  audioCtx = null;
+export const preloadKeyboardSounds = async () => {
+  if (typeof window === 'undefined') return false;
+
+  const ctx = getAudioContext();
+  if (!ctx) return false;
+
+  if (audioBuffers.size >= Object.keys(SAMPLE_FILES).length) {
+    return true;
+  }
+
+  if (isPreloading) return true;
+  isPreloading = true;
+
+  try {
+    const loadPromises = Object.entries(SAMPLE_FILES).map(async ([key, url]) => {
+      if (audioBuffers.has(key)) return;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return;
+        const arrayBuffer = await response.arrayBuffer();
+        const decoded = await ctx.decodeAudioData(arrayBuffer);
+        audioBuffers.set(key, decoded);
+      } catch {
+        // Silently handle individual sample load/decode failure
+      }
+    });
+
+    await Promise.all(loadPromises);
+    return audioBuffers.size > 0;
+  } catch {
+    return false;
+  } finally {
+    isPreloading = false;
+  }
 };
 
 /**
- * Explicitly initialize and/or resume the AudioContext from a user interaction.
+ * Explicitly initialize and/or resume the AudioContext from a user interaction
+ * and preload the audio buffers.
  * Returns a Promise that resolves to true if running.
  */
 export const initAudio = async () => {
@@ -127,6 +177,10 @@ export const initAudio = async () => {
     if (ctx.state === 'suspended') {
       await ctx.resume();
     }
+
+    // Trigger sample preloading in background
+    preloadKeyboardSounds().catch(() => {});
+
     return ctx.state === 'running';
   } catch {
     return false;
@@ -135,19 +189,28 @@ export const initAudio = async () => {
 
 export const resumeAudio = initAudio;
 
-// Subtle frequency variations for keypress acoustic diversity
-const KEY_VARIATION_PROFILES = [
-  { freqOffset: -12, clickFreq: 2100, gainMod: 0.95 },
-  { freqOffset: -4,  clickFreq: 2400, gainMod: 1.00 },
-  { freqOffset: 6,   clickFreq: 2250, gainMod: 0.92 },
-  { freqOffset: 15,  clickFreq: 2550, gainMod: 1.05 },
-];
+/**
+ * Reset audio context and buffer cache (used in test isolation).
+ */
+export const _resetAudioContext = () => {
+  audioCtx = null;
+  audioBuffers.clear();
+  isPreloading = false;
+  alphaKeyCounter = 0;
+};
 
 /**
- * Plays a short, subtle mechanical keyboard switch sound for a typed key.
+ * Injects a pre-decoded AudioBuffer into the cache (used for tests).
+ */
+export const _setAudioBuffer = (key, buffer) => {
+  audioBuffers.set(key, buffer);
+};
+
+/**
+ * Plays an authentic mechanical keyboard switch sound for a typed key.
  *
  * @param {string} key - The key that was typed (e.g. 'a', 'Backspace', 'Enter', ' ')
- * @param {object} options - Optional overrides (e.g. custom volume)
+ * @param {object} options - Optional overrides (e.g. custom volume, volumePercent)
  */
 export const playKeySound = (key = '', options = {}) => {
   if (!getSoundEnabled()) return false;
@@ -158,98 +221,53 @@ export const playKeySound = (key = '', options = {}) => {
   const ctx = getAudioContext();
   if (!ctx) return false;
 
+  // Determine sound sample key based on key type
+  let sampleKey = 'key-01';
+  if (key === ' ' || key === 'Spacebar' || key === 'Space') {
+    sampleKey = 'space';
+  } else if (key === 'Enter') {
+    sampleKey = 'enter';
+  } else if (key === 'Backspace' || key === 'Delete') {
+    sampleKey = 'backspace';
+  } else {
+    // Alternate between key-01 and key-02 for organic typing acoustic diversity
+    alphaKeyCounter = (alphaKeyCounter + 1) % 2;
+    sampleKey = alphaKeyCounter === 0 ? 'key-01' : 'key-02';
+  }
+
+  const buffer = audioBuffers.get(sampleKey) || audioBuffers.get('key-01');
+  if (!buffer) {
+    // If buffers are not loaded yet, initiate background preload and skip gracefully
+    preloadKeyboardSounds().catch(() => {});
+    return false;
+  }
+
   try {
     const now = ctx.currentTime;
-    const baseVolume = options.volume !== undefined
+
+    // Subtle micro-dynamics and pitch variation to prevent "machine gun" effect
+    const pitchJitter = 1.0 + (Math.random() * 0.06 - 0.03); // ±3% pitch
+    const gainJitter = 1.0 + (Math.random() * 0.06 - 0.03);  // ±3% gain
+
+    const baseVolume = (options.volume !== undefined
       ? options.volume
-      : (MAX_SAFE_VOLUME * (volPercent / 100));
+      : (MAX_SAFE_VOLUME * (volPercent / 100))) * gainJitter;
 
     if (baseVolume <= 0) return false;
 
-    // Determine sound profile based on key type
-    let startFreq = 420;
-    let endFreq = 140;
-    let duration = 0.034;
-    let clickBandpassFreq = 2300;
-    let noiseGainAmount = 0.18;
-
-    if (key === 'Backspace' || key === 'Delete') {
-      // Slightly softer, deeper thock
-      startFreq = 260;
-      endFreq = 110;
-      duration = 0.038;
-      clickBandpassFreq = 1600;
-      noiseGainAmount = 0.14;
-    } else if (key === 'Enter') {
-      // Deeper stabilizer sound
-      startFreq = 320;
-      endFreq = 95;
-      duration = 0.044;
-      clickBandpassFreq = 1800;
-      noiseGainAmount = 0.22;
-    } else if (key === ' ') {
-      // Spacebar stabilizer thock
-      startFreq = 340;
-      endFreq = 120;
-      duration = 0.040;
-      clickBandpassFreq = 1950;
-      noiseGainAmount = 0.20;
-    } else {
-      // Standard alphanumeric key with subtle randomized variation
-      const profile = KEY_VARIATION_PROFILES[Math.floor(Math.random() * KEY_VARIATION_PROFILES.length)];
-      startFreq += profile.freqOffset;
-      endFreq += Math.round(profile.freqOffset * 0.4);
-      clickBandpassFreq = profile.clickFreq;
-      noiseGainAmount *= profile.gainMod;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    if (source.playbackRate && source.playbackRate.setValueAtTime) {
+      source.playbackRate.setValueAtTime(pitchJitter, now);
     }
 
-    // Master gain for this keypress
-    const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(baseVolume, now);
-    masterGain.connect(ctx.destination);
+    const gainNode = ctx.createGain();
+    gainNode.gain.setValueAtTime(baseVolume, now);
 
-    // 1. High-frequency click transient (switch mechanism click)
-    const bufferSize = Math.floor(ctx.sampleRate * 0.012); // 12ms noise buffer
-    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const output = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      output[i] = Math.random() * 2 - 1;
-    }
+    source.connect(gainNode);
+    gainNode.connect(ctx.destination);
 
-    const noiseSource = ctx.createBufferSource();
-    noiseSource.buffer = noiseBuffer;
-
-    const noiseFilter = ctx.createBiquadFilter();
-    noiseFilter.type = 'bandpass';
-    noiseFilter.frequency.setValueAtTime(clickBandpassFreq, now);
-    noiseFilter.Q.setValueAtTime(3.5, now);
-
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(noiseGainAmount, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.014);
-
-    noiseSource.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
-    noiseGain.connect(masterGain);
-
-    noiseSource.start(now);
-    noiseSource.stop(now + 0.015);
-
-    // 2. Low-mid resonant body oscillator (keycap + switch bottom-out "thock")
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(startFreq, now);
-    osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
-
-    const oscGain = ctx.createGain();
-    oscGain.gain.setValueAtTime(0.50, now);
-    oscGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-
-    osc.connect(oscGain);
-    oscGain.connect(masterGain);
-
-    osc.start(now);
-    osc.stop(now + duration + 0.005);
+    source.start(now);
 
     return true;
   } catch {
@@ -268,5 +286,6 @@ export default {
   getAudioContext,
   initAudio,
   resumeAudio,
+  preloadKeyboardSounds,
   playKeySound,
 };

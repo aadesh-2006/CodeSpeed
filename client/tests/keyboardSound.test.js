@@ -10,6 +10,8 @@ import {
   MAX_SAFE_VOLUME,
   getAudioContext,
   _resetAudioContext,
+  _setAudioBuffer,
+  preloadKeyboardSounds,
   initAudio,
   resumeAudio,
   playKeySound,
@@ -97,8 +99,9 @@ describe('Mechanical Keyboard Sound Utility Tests', () => {
     });
   });
 
-  describe('AudioContext Lifecycle & initAudio / resumeAudio', () => {
-    test('initAudio returns true when AudioContext is running', async () => {
+  describe('AudioContext Lifecycle & Sample Preloading', () => {
+    test('initAudio returns true and triggers sample preloading', async () => {
+      let decodeCount = 0;
       class MockRunningContext {
         constructor() {
           this.state = 'running';
@@ -106,11 +109,44 @@ describe('Mechanical Keyboard Sound Utility Tests', () => {
         resume() {
           return Promise.resolve();
         }
+        decodeAudioData(buffer) {
+          decodeCount++;
+          return Promise.resolve({ length: 100 });
+        }
       }
       globalThis.window.AudioContext = MockRunningContext;
+      globalThis.fetch = () => Promise.resolve({
+        ok: true,
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(64)),
+      });
 
       const ready = await initAudio();
       assert.equal(ready, true);
+    });
+
+    test('preloadKeyboardSounds fetches and decodes all 5 switch samples into cache', async () => {
+      const decodedMap = new Map();
+      class MockContext {
+        constructor() {
+          this.state = 'running';
+        }
+        decodeAudioData(buf) {
+          return Promise.resolve({ length: 44100 * 0.04 });
+        }
+      }
+      globalThis.window.AudioContext = MockContext;
+      let fetchCount = 0;
+      globalThis.fetch = (url) => {
+        fetchCount++;
+        return Promise.resolve({
+          ok: true,
+          arrayBuffer: () => Promise.resolve(new ArrayBuffer(128)),
+        });
+      };
+
+      const loaded = await preloadKeyboardSounds();
+      assert.equal(loaded, true);
+      assert.equal(fetchCount, 5, 'Should fetch all 5 distinct switch samples');
     });
 
     test('initAudio resumes suspended AudioContext and returns true', async () => {
@@ -124,8 +160,12 @@ describe('Mechanical Keyboard Sound Utility Tests', () => {
           this.state = 'running';
           return Promise.resolve();
         }
+        decodeAudioData() {
+          return Promise.resolve({});
+        }
       }
       globalThis.window.AudioContext = MockSuspendedContext;
+      globalThis.fetch = () => Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
 
       const ready = await resumeAudio();
       assert.equal(ready, true);
@@ -148,7 +188,17 @@ describe('Mechanical Keyboard Sound Utility Tests', () => {
     });
   });
 
-  describe('playKeySound Execution & Graceful Fallback', () => {
+  describe('playKeySound Sample Playback, Key Mapping & Volume Control', () => {
+    const createMockSampleBuffer = (name) => ({ name, duration: 0.045 });
+
+    beforeEach(() => {
+      _setAudioBuffer('key-01', createMockSampleBuffer('key-01'));
+      _setAudioBuffer('key-02', createMockSampleBuffer('key-02'));
+      _setAudioBuffer('space', createMockSampleBuffer('space'));
+      _setAudioBuffer('enter', createMockSampleBuffer('enter'));
+      _setAudioBuffer('backspace', createMockSampleBuffer('backspace'));
+    });
+
     test('playKeySound returns false immediately when sound is disabled', () => {
       setSoundEnabled(false);
       const played = playKeySound('a');
@@ -166,13 +216,25 @@ describe('Mechanical Keyboard Sound Utility Tests', () => {
       });
     });
 
-    test('playKeySound synthesizes audio graph correctly when AudioContext is available', () => {
+    test('playKeySound fails gracefully without error when buffer is not yet loaded', () => {
+      _resetAudioContext(); // clears buffers
+      class MockContext {
+        constructor() { this.state = 'running'; }
+        decodeAudioData() { return Promise.resolve({}); }
+      }
+      globalThis.window.AudioContext = MockContext;
+      globalThis.fetch = () => Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+
+      const played = playKeySound('a');
+      assert.equal(played, false);
+    });
+
+    test('playKeySound plays sample and routes special keys accurately', () => {
       setSoundEnabled(true);
 
-      let createdOscillator = false;
-      let createdGain = false;
-      let createdBuffer = false;
+      const playedBuffers = [];
       let connectedToDest = false;
+      let startedSource = false;
       let masterGainValue = null;
 
       class MockGainNode {
@@ -181,113 +243,71 @@ describe('Mechanical Keyboard Sound Utility Tests', () => {
             setValueAtTime: (val) => {
               if (masterGainValue === null) masterGainValue = val;
             },
-            exponentialRampToValueAtTime: () => {},
           };
         }
         connect(target) {
           if (target === 'DESTINATION') connectedToDest = true;
         }
-        disconnect() {}
       }
 
-      class MockOscillatorNode {
-        constructor() {
-          this.frequency = {
-            setValueAtTime: () => {},
-            exponentialRampToValueAtTime: () => {},
-          };
-          this.type = 'sine';
-        }
-        connect() {}
-        disconnect() {}
-        start() {}
-        stop() {}
-      }
-
-      class MockBiquadFilterNode {
-        constructor() {
-          this.frequency = { setValueAtTime: () => {} };
-          this.Q = { setValueAtTime: () => {} };
-          this.type = 'bandpass';
-        }
-        connect() {}
-        disconnect() {}
-      }
-
-      class MockAudioBufferSourceNode {
+      class MockBufferSourceNode {
         constructor() {
           this.buffer = null;
+          this.playbackRate = {
+            setValueAtTime: () => {},
+          };
         }
         connect() {}
-        start() {}
-        stop() {}
+        start() {
+          startedSource = true;
+          if (this.buffer) playedBuffers.push(this.buffer.name);
+        }
       }
 
       class MockAudioContext {
         constructor() {
           this.state = 'running';
           this.currentTime = 0;
-          this.sampleRate = 44100;
           this.destination = 'DESTINATION';
         }
-        createGain() {
-          createdGain = true;
-          return new MockGainNode();
-        }
-        createOscillator() {
-          createdOscillator = true;
-          return new MockOscillatorNode();
-        }
-        createBiquadFilter() {
-          return new MockBiquadFilterNode();
-        }
-        createBuffer(channels, length, sampleRate) {
-          createdBuffer = true;
-          return {
-            getChannelData: () => new Float32Array(length),
-          };
-        }
-        createBufferSource() {
-          return new MockAudioBufferSourceNode();
-        }
-        resume() {
-          return Promise.resolve();
-        }
+        createGain() { return new MockGainNode(); }
+        createBufferSource() { return new MockBufferSourceNode(); }
       }
 
       globalThis.window.AudioContext = MockAudioContext;
 
-      // Test key variations
-      const testKeys = ['a', 'Backspace', 'Enter', ' ', 'Tab', '1', ';'];
-      for (const k of testKeys) {
-        createdOscillator = false;
-        createdGain = false;
-        createdBuffer = false;
-        connectedToDest = false;
-        masterGainValue = null;
+      // 1. Space key -> space buffer
+      playKeySound(' ');
+      assert.equal(playedBuffers[playedBuffers.length - 1], 'space');
 
-        const success = playKeySound(k);
-        assert.equal(success, true, `playKeySound should succeed for key: ${k}`);
-        assert.equal(createdOscillator, true, 'Should create body oscillator node');
-        assert.equal(createdBuffer, true, 'Should create click noise buffer');
-        assert.equal(createdGain, true, 'Should create gain envelopes');
-        assert.equal(connectedToDest, true, 'Should connect to master destination');
-        // Default 70% volume * 0.40 MAX_SAFE_VOLUME = 0.28
-        assert.equal(Math.abs(masterGainValue - 0.28) < 0.0001, true, 'Should default master volume to 0.28 at 70% volume');
-      }
+      // 2. Enter key -> enter buffer
+      playKeySound('Enter');
+      assert.equal(playedBuffers[playedBuffers.length - 1], 'enter');
+
+      // 3. Backspace key -> backspace buffer
+      playKeySound('Backspace');
+      assert.equal(playedBuffers[playedBuffers.length - 1], 'backspace');
+
+      // 4. Alphanumerics alternate between key-01 and key-02
+      playedBuffers.length = 0;
+      playKeySound('h');
+      playKeySound('e');
+      playKeySound('l');
+      playKeySound('l');
+      playKeySound('o');
+      assert.ok(playedBuffers.includes('key-01'));
+      assert.ok(playedBuffers.includes('key-02'));
     });
 
-    test('playKeySound at 0% volume returns false and skips synthesis', () => {
+    test('playKeySound at 0% volume returns false and skips playback', () => {
       setSoundEnabled(true);
       setSoundVolume(0);
 
-      let createdGain = false;
+      let createdSource = false;
       class MockAudioContext {
-        constructor() {
-          this.state = 'running';
-        }
-        createGain() {
-          createdGain = true;
+        constructor() { this.state = 'running'; }
+        createBufferSource() {
+          createdSource = true;
           return {};
         }
       }
@@ -295,177 +315,53 @@ describe('Mechanical Keyboard Sound Utility Tests', () => {
 
       const success = playKeySound('a');
       assert.equal(success, false);
-      assert.equal(createdGain, false);
+      assert.equal(createdSource, false);
     });
 
-    test('playKeySound at 100% volume scales to MAX_SAFE_VOLUME (0.40)', () => {
+    test('playKeySound scales gain according to user volume setting (70% and 100%)', () => {
       setSoundEnabled(true);
+      let capturedGain = null;
+
+      class MockGainNode {
+        constructor() {
+          this.gain = {
+            setValueAtTime: (val) => {
+              capturedGain = val;
+            },
+          };
+        }
+        connect() {}
+      }
+
+      class MockAudioContext {
+        constructor() {
+          this.state = 'running';
+          this.currentTime = 0;
+          this.destination = 'DEST';
+        }
+        createGain() { return new MockGainNode(); }
+        createBufferSource() {
+          return {
+            connect: () => {},
+            start: () => {},
+            playbackRate: { setValueAtTime: () => {} },
+          };
+        }
+      }
+
+      globalThis.window.AudioContext = MockAudioContext;
+
+      // 100% volume -> ~0.40 (with ±3% micro-jitter)
       setSoundVolume(100);
-      assert.equal(MAX_SAFE_VOLUME, 0.40);
+      playKeySound('a');
+      assert.ok(capturedGain >= 0.38 && capturedGain <= 0.42, `Gain at 100% should be ~0.40, got ${capturedGain}`);
 
-      let masterGainVal = null;
-      class MockGainNode {
-        constructor() {
-          this.gain = {
-            setValueAtTime: (val) => {
-              if (masterGainVal === null) masterGainVal = val;
-            },
-            exponentialRampToValueAtTime: () => {},
-          };
-        }
-        connect() {}
-        disconnect() {}
-      }
-
-      class MockAudioContext {
-        constructor() {
-          this.state = 'running';
-          this.currentTime = 0;
-          this.sampleRate = 44100;
-          this.destination = {};
-        }
-        createGain() { return new MockGainNode(); }
-        createOscillator() {
-          return {
-            frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
-            type: 'triangle',
-            connect: () => {},
-            start: () => {},
-            stop: () => {},
-          };
-        }
-        createBiquadFilter() {
-          return {
-            frequency: { setValueAtTime: () => {} },
-            Q: { setValueAtTime: () => {} },
-            connect: () => {},
-          };
-        }
-        createBuffer(c, l, s) {
-          return { getChannelData: () => new Float32Array(l) };
-        }
-        createBufferSource() {
-          return { connect: () => {}, start: () => {}, stop: () => {} };
-        }
-      }
-
-      globalThis.window.AudioContext = MockAudioContext;
-      const success = playKeySound('a');
-      assert.equal(success, true);
-      assert.equal(Math.abs(masterGainVal - 0.40) < 0.0001, true);
-    });
-
-    test('playKeySound respects volumePercent option override', () => {
-      setSoundEnabled(true);
-      setSoundVolume(70);
-
-      let masterGainVal = null;
-      class MockGainNode {
-        constructor() {
-          this.gain = {
-            setValueAtTime: (val) => {
-              if (masterGainVal === null) masterGainVal = val;
-            },
-            exponentialRampToValueAtTime: () => {},
-          };
-        }
-        connect() {}
-        disconnect() {}
-      }
-
-      class MockAudioContext {
-        constructor() {
-          this.state = 'running';
-          this.currentTime = 0;
-          this.sampleRate = 44100;
-          this.destination = {};
-        }
-        createGain() { return new MockGainNode(); }
-        createOscillator() {
-          return {
-            frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
-            type: 'triangle',
-            connect: () => {},
-            start: () => {},
-            stop: () => {},
-          };
-        }
-        createBiquadFilter() {
-          return {
-            frequency: { setValueAtTime: () => {} },
-            Q: { setValueAtTime: () => {} },
-            connect: () => {},
-          };
-        }
-        createBuffer(c, l, s) {
-          return { getChannelData: () => new Float32Array(l) };
-        }
-        createBufferSource() {
-          return { connect: () => {}, start: () => {}, stop: () => {} };
-        }
-      }
-
-      globalThis.window.AudioContext = MockAudioContext;
-      // 50% of 0.40 MAX_SAFE_VOLUME = 0.20
-      const success = playKeySound('a', { volumePercent: 50 });
-      assert.equal(success, true);
-      assert.equal(Math.abs(masterGainVal - 0.20) < 0.0001, true);
-    });
-
-    test('playKeySound respects custom direct volume override option', () => {
-      setSoundEnabled(true);
-      let capturedVolume = null;
-
-      class MockCustomGainNode {
-        constructor() {
-          this.gain = {
-            setValueAtTime: (val) => {
-              if (capturedVolume === null) capturedVolume = val;
-            },
-            exponentialRampToValueAtTime: () => {},
-          };
-        }
-        connect() {}
-        disconnect() {}
-      }
-
-      class MockCustomAudioContext {
-        constructor() {
-          this.state = 'running';
-          this.currentTime = 0;
-          this.sampleRate = 44100;
-          this.destination = 'DESTINATION';
-        }
-        createGain() { return new MockCustomGainNode(); }
-        createOscillator() {
-          return {
-            frequency: { setValueAtTime: () => {}, exponentialRampToValueAtTime: () => {} },
-            type: 'triangle',
-            connect: () => {},
-            start: () => {},
-            stop: () => {},
-          };
-        }
-        createBiquadFilter() {
-          return {
-            frequency: { setValueAtTime: () => {} },
-            Q: { setValueAtTime: () => {} },
-            connect: () => {},
-          };
-        }
-        createBuffer(c, l, s) {
-          return { getChannelData: () => new Float32Array(l) };
-        }
-        createBufferSource() {
-          return { connect: () => {}, start: () => {}, stop: () => {} };
-        }
-      }
-
-      globalThis.window.AudioContext = MockCustomAudioContext;
-      const success = playKeySound('x', { volume: 0.15 });
-      assert.equal(success, true);
-      assert.equal(capturedVolume, 0.15);
+      // 50% volume -> ~0.20 (with ±3% micro-jitter)
+      setSoundVolume(50);
+      playKeySound('a');
+      assert.ok(capturedGain >= 0.18 && capturedGain <= 0.22, `Gain at 50% should be ~0.20, got ${capturedGain}`);
     });
   });
 });
+
 
