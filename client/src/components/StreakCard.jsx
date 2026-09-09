@@ -35,32 +35,34 @@ export function FlameIcon({ lit = false, size = 18, className = '' }) {
 }
 
 /**
- * StreakCard Component: displays daily practice streak, longest streak, and 7-day indicator.
+ * StreakCard Component: displays daily typing streak, longest streak, and 7-day activity indicator.
+ * Unified across both Practice and Ranked typing sessions.
  */
 export function StreakCard({ streak, loading = false }) {
   const {
     currentStreak = 0,
     longestStreak = 0,
-    practicedToday = false,
     recentDays = [],
   } = streak || {};
+
+  const isActiveToday = streak?.activeToday ?? streak?.practicedToday ?? streak?.completedToday ?? false;
 
   return (
     <div className="streak-card">
       <div className="streak-card-header">
         <div className="streak-title-group">
           <div className="streak-title-badge">
-            <FlameIcon lit={practicedToday} size={18} />
-            <span className="streak-title">Daily Practice Streak</span>
+            <FlameIcon lit={isActiveToday} size={18} />
+            <span className="streak-title">Daily Streak</span>
           </div>
           <span className="streak-subtitle">
-            Complete at least 1 practice session each calendar day to build your streak.
+            Complete at least 1 typing session (Practice or Ranked) each calendar day to build your streak.
           </span>
         </div>
 
-        <div className={`streak-status-pill ${practicedToday ? 'status-active' : 'status-pending'}`}>
-          <FlameIcon lit={practicedToday} size={14} />
-          <span>{practicedToday ? 'Practiced Today' : 'Not Practiced Today'}</span>
+        <div className={`streak-status-pill ${isActiveToday ? 'status-active' : 'status-pending'}`}>
+          <FlameIcon lit={isActiveToday} size={14} />
+          <span>{isActiveToday ? 'Active Today' : 'Not Active Today'}</span>
         </div>
       </div>
 
@@ -70,11 +72,11 @@ export function StreakCard({ streak, loading = false }) {
           <div className="streak-metric-item">
             <span className="streak-metric-label">Current Streak</span>
             <div className="streak-metric-value-row">
-              <span className={`streak-metric-number ${practicedToday ? 'text-amber' : 'text-dim'}`}>
+              <span className={`streak-metric-number ${isActiveToday ? 'text-amber' : 'text-dim'}`}>
                 {currentStreak}
               </span>
               <span className="streak-metric-unit">{currentStreak === 1 ? 'day' : 'days'}</span>
-              <FlameIcon lit={practicedToday} size={20} />
+              <FlameIcon lit={isActiveToday} size={20} />
             </div>
           </div>
 
@@ -92,22 +94,25 @@ export function StreakCard({ streak, loading = false }) {
         {/* 7-Day Recent Calendar Row */}
         <div className="streak-calendar-col">
           <span className="streak-calendar-label">Recent Activity (Last 7 Days)</span>
-          <div className="recent-days-row" role="list" aria-label="Last 7 days practice status">
+          <div className="recent-days-row" role="list" aria-label="Last 7 days typing activity status">
             {recentDays && recentDays.length > 0 ? (
-              recentDays.map((day) => (
-                <div
-                  key={day.date}
-                  className={`day-cell ${day.practiced ? 'day-practiced' : 'day-missed'} ${day.isToday ? 'day-today' : ''}`}
-                  role="listitem"
-                  title={`${day.date}: ${day.practiced ? 'Practiced' : 'Missed'}${day.isToday ? ' (Today)' : ''}`}
-                >
-                  <span className="day-label">{day.isToday ? 'Today' : day.dayLabel}</span>
-                  <div className="day-flame-container">
-                    <FlameIcon lit={day.practiced} size={18} />
+              recentDays.map((day) => {
+                const dayActive = day.active ?? day.practiced ?? false;
+                return (
+                  <div
+                    key={day.date}
+                    className={`day-cell ${dayActive ? 'day-practiced' : 'day-missed'} ${day.isToday ? 'day-today' : ''}`}
+                    role="listitem"
+                    title={`${day.date}: ${dayActive ? 'Active' : 'Missed'}${day.isToday ? ' (Today)' : ''}`}
+                  >
+                    <span className="day-label">{day.isToday ? 'Today' : day.dayLabel}</span>
+                    <div className="day-flame-container">
+                      <FlameIcon lit={dayActive} size={18} />
+                    </div>
+                    <span className="day-status-dot"></span>
                   </div>
-                  <span className="day-status-dot"></span>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="recent-days-empty">Loading recent days...</div>
             )}

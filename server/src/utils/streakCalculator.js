@@ -1,6 +1,7 @@
 /**
- * High-performance Daily Practice Streak Calculator.
- * Derives consecutive practice calendar days from timestamps with timezone support.
+ * High-performance Daily Typing Streak Calculator.
+ * Derives consecutive active calendar days from completed typing session timestamps with timezone support.
+ * Counts all completed sessions (Practice and Ranked).
  */
 
 /**
@@ -77,20 +78,20 @@ export const getDayLabel = (dateStr) => {
 };
 
 /**
- * Calculate full daily streak metrics from an array of practice performance timestamps.
+ * Calculate full daily streak metrics from an array of performance timestamps.
  *
- * @param {Array<Date|string|number>} practiceTimestamps
+ * @param {Array<Date|string|number>} performanceTimestamps - All completed session timestamps (Ranked & Practice)
  * @param {object} options
  * @param {string} options.timeZone - IANA timezone (default 'UTC')
  * @param {Date|string} options.referenceDate - Optional current date override for testing
- * @returns {object} - Streak metrics { currentStreak, longestStreak, practicedToday, today, practicedDates, recentDays }
+ * @returns {object} - Streak metrics { currentStreak, longestStreak, activeToday, today, activeDates, recentDays }
  */
-export const calculateDailyStreak = (practiceTimestamps = [], options = {}) => {
+export const calculateDailyStreak = (performanceTimestamps = [], options = {}) => {
   const timeZone = options.timeZone || 'UTC';
   const now = options.referenceDate ? new Date(options.referenceDate) : new Date();
   const todayStr = formatDateInTimezone(now, timeZone);
 
-  if (!practiceTimestamps || practiceTimestamps.length === 0) {
+  if (!performanceTimestamps || performanceTimestamps.length === 0) {
     // Generate 7-day empty window ending today
     const recentDays = [];
     for (let i = 6; i >= 0; i--) {
@@ -98,6 +99,7 @@ export const calculateDailyStreak = (practiceTimestamps = [], options = {}) => {
       recentDays.push({
         date: dStr,
         dayLabel: getDayLabel(dStr),
+        active: false,
         practiced: false,
         isToday: dStr === todayStr,
       });
@@ -106,16 +108,19 @@ export const calculateDailyStreak = (practiceTimestamps = [], options = {}) => {
     return {
       currentStreak: 0,
       longestStreak: 0,
+      activeToday: false,
+      completedToday: false,
       practicedToday: false,
       today: todayStr,
       recentDays,
+      activeDates: [],
       practicedDates: [],
     };
   }
 
-  // 1. Convert all practice timestamps to unique YYYY-MM-DD date strings in user timezone
+  // 1. Convert all session timestamps to unique YYYY-MM-DD date strings in user timezone
   const dateSet = new Set();
-  for (const ts of practiceTimestamps) {
+  for (const ts of performanceTimestamps) {
     const formatted = formatDateInTimezone(ts, timeZone);
     if (formatted) {
       dateSet.add(formatted);
@@ -123,7 +128,7 @@ export const calculateDailyStreak = (practiceTimestamps = [], options = {}) => {
   }
 
   const sortedDates = Array.from(dateSet).sort();
-  const practicedToday = dateSet.has(todayStr);
+  const activeToday = dateSet.has(todayStr);
 
   // 2. Calculate longest streak across entire history
   let longestStreak = 0;
@@ -147,10 +152,10 @@ export const calculateDailyStreak = (practiceTimestamps = [], options = {}) => {
 
   // 3. Calculate current active streak ending today
   // Under standard streak semantics:
-  // - If practiced today: count consecutive days backwards starting from today
-  // - If not practiced today: current streak is 0
+  // - If active today: count consecutive days backwards starting from today
+  // - If not active today: current streak is 0
   let currentStreak = 0;
-  if (practicedToday) {
+  if (activeToday) {
     let checkDate = todayStr;
     while (dateSet.has(checkDate)) {
       currentStreak += 1;
@@ -162,25 +167,30 @@ export const calculateDailyStreak = (practiceTimestamps = [], options = {}) => {
   const recentDays = [];
   for (let i = 6; i >= 0; i--) {
     const dStr = addDays(todayStr, -i);
+    const dayActive = dateSet.has(dStr);
     recentDays.push({
       date: dStr,
       dayLabel: getDayLabel(dStr),
-      practiced: dateSet.has(dStr),
+      active: dayActive,
+      practiced: dayActive,
       isToday: dStr === todayStr,
     });
   }
 
-  // Return recent practiced dates (last 30 days of activity)
+  // Return recent active dates (last 30 days of activity)
   const thirtyDaysAgo = addDays(todayStr, -30);
-  const recentPracticedDates = sortedDates.filter((d) => d >= thirtyDaysAgo);
+  const recentActiveDates = sortedDates.filter((d) => d >= thirtyDaysAgo);
 
   return {
     currentStreak,
     longestStreak,
-    practicedToday,
+    activeToday,
+    completedToday: activeToday,
+    practicedToday: activeToday,
     today: todayStr,
     recentDays,
-    practicedDates: recentPracticedDates,
+    activeDates: recentActiveDates,
+    practicedDates: recentActiveDates,
   };
 };
 

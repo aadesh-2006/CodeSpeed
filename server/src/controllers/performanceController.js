@@ -589,8 +589,8 @@ export const getBadges = async (req, res) => {
 };
 
 /**
- * Controller to calculate and return daily Practice streak metrics for the authenticated user.
- * Derived exclusively from Practice sessions.
+ * Controller to calculate and return daily typing streak metrics for the authenticated user.
+ * Derived from all completed sessions (Practice and Ranked).
  * GET /api/users/me/streak or GET /api/performances/streak
  */
 export const getUserStreak = async (req, res) => {
@@ -605,13 +605,13 @@ export const getUserStreak = async (req, res) => {
 
     const { timezone } = req.query || {};
 
-    // Query all Practice sessions for this user (indexed by userId and mode)
-    const practiceRecords = await Performance.find(
-      { userId, mode: 'practice' },
+    // Query all completed performance sessions for this user (indexed by userId and createdAt)
+    const records = await Performance.find(
+      { userId },
       { createdAt: 1 }
     ).sort({ createdAt: 1 });
 
-    const timestamps = practiceRecords.map((r) => r.createdAt);
+    const timestamps = records.map((r) => r.createdAt);
     const streakData = calculateDailyStreak(timestamps, { timeZone: timezone });
 
     return res.status(200).json({

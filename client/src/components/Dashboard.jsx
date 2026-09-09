@@ -75,10 +75,9 @@ export function Dashboard({
 
   useEffect(() => {
     fetchSummary();
+    fetchStreak();
     if (dashboardMode === 'ranked') {
       fetchBadges();
-    } else {
-      fetchStreak();
     }
   }, [fetchSummary, fetchBadges, fetchStreak, dashboardMode]);
 
@@ -185,11 +184,8 @@ export function Dashboard({
             className="btn btn-icon btn-sm"
             onClick={() => {
               fetchSummary();
-              if (isRanked) {
-                fetchBadges();
-              } else {
-                fetchStreak();
-              }
+              fetchStreak();
+              if (isRanked) fetchBadges();
             }}
             title="Refresh statistics"
           >
@@ -219,7 +215,7 @@ export function Dashboard({
       {/* Empty State */}
       {!loading && !error && summary.totalTests === 0 && (
         <div className="dashboard-grid">
-          {!isRanked && streak && (
+          {streak && (
             <StreakCard streak={streak} />
           )}
 
@@ -245,8 +241,8 @@ export function Dashboard({
       {/* Populated Dashboard Content */}
       {!loading && !error && summary.totalTests > 0 && (
         <div className="dashboard-grid">
-          {/* Daily Practice Streak Widget (Practice Mode) */}
-          {!isRanked && streak && (
+          {/* Daily Streak Widget (Unified Practice & Ranked) */}
+          {streak && (
             <StreakCard streak={streak} />
           )}
 
