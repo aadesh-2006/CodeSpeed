@@ -8,8 +8,6 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import app from '../src/index.js';
 import User from '../src/models/User.js';
 import Performance from '../src/models/Performance.js';
-import { testMailbox } from '../src/services/emailService.js';
-import { migrateLegacyUsers } from '../src/utils/migrateEmailVerification.js';
 
 // Configure test environment
 const JWT_TEST_SECRET = 'codespeed_test_secret_key_12345';
@@ -75,10 +73,8 @@ describe('Authentication & User Profile API Tests', () => {
     });
   });
 
-  describe('POST /api/auth/signup & Email Verification Flow', () => {
-    let pilotRawToken;
-
-    test('successful signup returns 201 with requiresVerification: true and does not return JWT', async () => {
+  describe('POST /api/auth/signup', () => {
+    test('successful signup returns 201 with JWT token and active user details', async () => {
       const res = await fetch(`${baseUrl}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -92,77 +88,19 @@ describe('Authentication & User Profile API Tests', () => {
       assert.equal(res.status, 201);
       const data = await res.json();
       assert.equal(data.status, 'success');
-      assert.equal(data.requiresVerification, true);
-      assert.equal(data.token, undefined); // No JWT issued prior to email verification
+      assert.equal(data.message, 'Account created successfully.');
+      assert.ok(data.token, 'JWT token should be returned upon successful registration');
       assert.ok(data.user);
       assert.equal(data.user.username, 'testpilot');
       assert.equal(data.user.email, 'pilot@example.com');
-      assert.equal(data.user.emailVerified, false);
       assert.ok(data.user.id);
       assert.equal(data.user.password, undefined);
       assert.equal(data.user.passwordHash, undefined);
 
       const dbUser = await User.findOne({ email: 'pilot@example.com' });
       assert.ok(dbUser);
-      assert.equal(dbUser.emailVerified, false);
-      assert.ok(dbUser.verificationTokenHash);
-      assert.ok(dbUser.verificationTokenExpires);
       assert.notEqual(dbUser.passwordHash, 'Password123!');
-
-      // Check testMailbox recorded sent email
-      const sentMail = testMailbox.find((m) => m.to === 'pilot@example.com');
-      assert.ok(sentMail);
-      assert.ok(sentMail.rawToken);
-      pilotRawToken = sentMail.rawToken;
-    });
-
-    test('unverified user cannot log in and receives 403 EMAIL_NOT_VERIFIED', async () => {
-      const res = await fetch(`${baseUrl}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'pilot@example.com',
-          password: 'Password123!',
-        }),
-      });
-
-      assert.equal(res.status, 403);
-      const data = await res.json();
-      assert.equal(data.status, 'error');
-      assert.equal(data.code, 'EMAIL_NOT_VERIFIED');
-      assert.equal(data.token, undefined);
-    });
-
-    test('GET /api/auth/verify-email with valid token verifies email and clears token', async () => {
-      assert.ok(pilotRawToken);
-      const res = await fetch(`${baseUrl}/api/auth/verify-email?token=${pilotRawToken}`);
-      assert.equal(res.status, 200);
-      const data = await res.json();
-      assert.equal(data.status, 'success');
-      assert.equal(data.user.emailVerified, true);
-
-      const dbUser = await User.findOne({ email: 'pilot@example.com' });
-      assert.equal(dbUser.emailVerified, true);
-      assert.equal(dbUser.verificationTokenHash, null);
-      assert.equal(dbUser.verificationTokenExpires, null);
-    });
-
-    test('verified user can log in and receives 200 with valid JWT', async () => {
-      const res = await fetch(`${baseUrl}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'pilot@example.com',
-          password: 'Password123!',
-        }),
-      });
-
-      assert.equal(res.status, 200);
-      const data = await res.json();
-      assert.equal(data.status, 'success');
-      assert.ok(data.token);
-      assert.ok(data.user);
-      assert.equal(data.user.emailVerified, true);
+      assert.equal(dbUser.verificationTokenHash, undefined);
     });
 
     test('rejects duplicate email with 409', async () => {
@@ -227,419 +165,6 @@ describe('Authentication & User Profile API Tests', () => {
         body: JSON.stringify({ username: 'ab', email: 'user4@example.com', password: 'Password123' }),
       });
       assert.equal(res4.status, 400);
-    });
-  });
-
-  describe('Email Verification & Token Lifecycle (GET /verify-email & POST /resend-verification)', () => {
-    let unverifiedRawToken;
-
-    before(async () => {
-      // Create fresh unverified user
-      await fetch(`${baseUrl}/api/auth/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: 'unverified_racer',
-          email: 'unverified@example.com',
-          password: 'Password123!',
-        }),
-      });
-
-      const sentMail = testMailbox.find((m) => m.to === 'unverified@example.com');
-      assert.ok(sentMail);
-      unverifiedRawToken = sentMail.rawToken;
-    });
-
-    test('missing token returns 400 with TOKEN_REQUIRED', async () => {
-      const res = await fetch(`${baseUrl}/api/auth/verify-email`);
-      assert.equal(res.status, 400);
-      const data = await res.json();
-      assert.equal(data.status, 'error');
-      assert.equal(data.code, 'TOKEN_REQUIRED');
-    });
-
-    test('invalid token returns 400 with TOKEN_INVALID', async () => {
-      const res = await fetch(`${baseUrl}/api/auth/verify-email?token=invalid_hex_token_12345`);
-      assert.equal(res.status, 400);
-      const data = await res.json();
-      assert.equal(data.status, 'error');
-      assert.equal(data.code, 'TOKEN_INVALID');
-    });
-
-    test('expired token returns 400 with TOKEN_EXPIRED', async () => {
-      // Manually expire the token in MongoDB
-      await User.updateOne(
-        { email: 'unverified@example.com' },
-        { verificationTokenExpires: new Date(Date.now() - 1000 * 60) }
-      );
-
-      const res = await fetch(`${baseUrl}/api/auth/verify-email?token=${unverifiedRawToken}`);
-      assert.equal(res.status, 400);
-      const data = await res.json();
-      assert.equal(data.status, 'error');
-      assert.equal(data.code, 'TOKEN_EXPIRED');
-    });
-
-    test('resend verification generates fresh token, invalidates old token, and resets 24h expiry', async () => {
-      // Fast-forward last sent time so cooldown allows resend
-      await User.updateOne(
-        { email: 'unverified@example.com' },
-        { lastVerificationEmailSentAt: new Date(Date.now() - 1000 * 70) }
-      );
-
-      const res = await fetch(`${baseUrl}/api/auth/resend-verification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'unverified@example.com' }),
-      });
-
-      assert.equal(res.status, 200);
-      const data = await res.json();
-      assert.equal(data.status, 'success');
-
-      // Check new email in testMailbox
-      const sentMails = testMailbox.filter((m) => m.to === 'unverified@example.com');
-      const latestMail = sentMails[sentMails.length - 1];
-      assert.ok(latestMail);
-      assert.notEqual(latestMail.rawToken, unverifiedRawToken);
-
-      // Old expired token fails
-      const oldRes = await fetch(`${baseUrl}/api/auth/verify-email?token=${unverifiedRawToken}`);
-      assert.equal(oldRes.status, 400);
-
-      // New token succeeds
-      const newRes = await fetch(`${baseUrl}/api/auth/verify-email?token=${latestMail.rawToken}`);
-      assert.equal(newRes.status, 200);
-      const newData = await newRes.json();
-      assert.equal(newData.status, 'success');
-      assert.equal(newData.user.emailVerified, true);
-    });
-
-    test('reused token returns 400 with TOKEN_INVALID', async () => {
-      const sentMails = testMailbox.filter((m) => m.to === 'unverified@example.com');
-      const latestMail = sentMails[sentMails.length - 1];
-
-      // Re-attempt verification with already used token
-      const reusedRes = await fetch(`${baseUrl}/api/auth/verify-email?token=${latestMail.rawToken}`);
-      assert.equal(reusedRes.status, 400);
-      const reusedData = await reusedRes.json();
-      assert.equal(reusedData.code, 'TOKEN_INVALID');
-    });
-
-    test('resend verification enforces 60s cooldown with 429 RATE_LIMITED', async () => {
-      // Create user for cooldown testing
-      await fetch(`${baseUrl}/api/auth/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: 'cooldown_user',
-          email: 'cooldown@example.com',
-          password: 'Password123!',
-        }),
-      });
-
-      // Immediate resend attempt must hit cooldown
-      const res = await fetch(`${baseUrl}/api/auth/resend-verification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'cooldown@example.com' }),
-      });
-
-      assert.equal(res.status, 429);
-      const data = await res.json();
-      assert.equal(data.status, 'error');
-      assert.equal(data.code, 'RATE_LIMITED');
-      assert.ok(data.retryAfterSeconds > 0);
-    });
-
-    test('resend verification prevents email enumeration for nonexistent or verified accounts', async () => {
-      const resNonexistent = await fetch(`${baseUrl}/api/auth/resend-verification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'nonexistent@example.com' }),
-      });
-      assert.equal(resNonexistent.status, 200);
-      const dataNonexistent = await resNonexistent.json();
-      assert.equal(dataNonexistent.status, 'success');
-
-      const resVerified = await fetch(`${baseUrl}/api/auth/resend-verification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'pilot@example.com' }), // verified user
-      });
-      assert.equal(resVerified.status, 200);
-      const dataVerified = await resVerified.json();
-      assert.equal(dataVerified.status, 'success');
-    });
-
-    test('legacy user migration marks existing unverified accounts without tokens as emailVerified: true', async () => {
-      // Seed a legacy user created before email verification existed
-      await User.create({
-        username: 'legacy_veteran',
-        email: 'legacy@example.com',
-        passwordHash: 'hashed_password_123',
-        emailVerified: false,
-        verificationTokenHash: null,
-      });
-
-      // Run migration
-      const migrationResult = await migrateLegacyUsers();
-      assert.ok(migrationResult);
-
-      const migratedUser = await User.findOne({ email: 'legacy@example.com' });
-      assert.equal(migratedUser.emailVerified, true);
-    });
-
-    test('production mode with missing RESEND_API_KEY fails signup with 503 and rolls back user document', async () => {
-      const prevNodeEnv = process.env.NODE_ENV;
-      const prevKey = process.env.RESEND_API_KEY;
-      delete process.env.RESEND_API_KEY;
-      process.env.NODE_ENV = 'production';
-
-      try {
-        const res = await fetch(`${baseUrl}/api/auth/signup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: 'failed_email_user',
-            email: 'failed_email@example.com',
-            password: 'Password123!',
-          }),
-        });
-
-        assert.equal(res.status, 503);
-        const data = await res.json();
-        assert.equal(data.status, 'error');
-        assert.equal(data.code, 'EMAIL_DELIVERY_FAILED');
-        assert.match(data.message, /unable to send verification email/i);
-
-        // Verify that user document was cleanly rolled back / deleted
-        const rolledBackUser = await User.findOne({ email: 'failed_email@example.com' });
-        assert.equal(rolledBackUser, null);
-
-        // Verify that another signup with same credentials succeeds once environment allows simulation
-        process.env.NODE_ENV = 'test';
-        const retryRes = await fetch(`${baseUrl}/api/auth/signup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: 'failed_email_user',
-            email: 'failed_email@example.com',
-            password: 'Password123!',
-          }),
-        });
-        assert.equal(retryRes.status, 201);
-        const retryData = await retryRes.json();
-        assert.equal(retryData.status, 'success');
-        assert.equal(retryData.requiresVerification, true);
-      } finally {
-        process.env.NODE_ENV = prevNodeEnv;
-        if (prevKey) process.env.RESEND_API_KEY = prevKey;
-      }
-    });
-
-    test('production mode with missing RESEND_API_KEY returns 503 during resend-verification', async () => {
-      const prevNodeEnv = process.env.NODE_ENV;
-      const prevKey = process.env.RESEND_API_KEY;
-      delete process.env.RESEND_API_KEY;
-      process.env.NODE_ENV = 'production';
-
-      try {
-        // Fast-forward cooldown for unverified user
-        await User.updateOne(
-          { email: 'failed_email@example.com' },
-          { lastVerificationEmailSentAt: new Date(Date.now() - 1000 * 70) }
-        );
-
-        const res = await fetch(`${baseUrl}/api/auth/resend-verification`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'failed_email@example.com' }),
-        });
-
-        assert.equal(res.status, 503);
-        const data = await res.json();
-        assert.equal(data.status, 'error');
-        assert.equal(data.code, 'EMAIL_DELIVERY_FAILED');
-        assert.match(data.message, /unable to send verification email/i);
-      } finally {
-        process.env.NODE_ENV = prevNodeEnv;
-        if (prevKey) process.env.RESEND_API_KEY = prevKey;
-      }
-    });
-
-    test('Resend HTTP API mock: verifies endpoint, auth header, payload structure, and 200 delivery', async () => {
-      const originalFetch = globalThis.fetch;
-      const prevKey = process.env.RESEND_API_KEY;
-      const prevFrom = process.env.EMAIL_FROM;
-
-      process.env.RESEND_API_KEY = 're_mock_test_key_12345';
-      process.env.EMAIL_FROM = 'CodeSpeed <test@codespeed.app>';
-
-      let capturedUrl = null;
-      let capturedOptions = null;
-
-      // Intercept calls to api.resend.com
-      globalThis.fetch = async (url, options) => {
-        if (typeof url === 'string' && url.includes('api.resend.com')) {
-          capturedUrl = url;
-          capturedOptions = options;
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({ id: 'resend_email_id_999' }),
-          };
-        }
-        return originalFetch(url, options);
-      };
-
-      try {
-        const res = await fetch(`${baseUrl}/api/auth/signup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: 'resend_mock_user',
-            email: 'resend_mock@example.com',
-            password: 'Password123!',
-          }),
-        });
-
-        assert.equal(res.status, 201);
-        const data = await res.json();
-        assert.equal(data.status, 'success');
-        assert.equal(data.requiresVerification, true);
-
-        // Verify Resend HTTP API call details
-        assert.equal(capturedUrl, 'https://api.resend.com/emails');
-        assert.equal(capturedOptions.method, 'POST');
-        assert.equal(capturedOptions.headers.Authorization, 'Bearer re_mock_test_key_12345');
-        assert.equal(capturedOptions.headers['Content-Type'], 'application/json');
-
-        const body = JSON.parse(capturedOptions.body);
-        assert.equal(body.from, 'CodeSpeed <test@codespeed.app>');
-        assert.deepEqual(body.to, ['resend_mock@example.com']);
-        assert.match(body.subject, /Verify your CodeSpeed account/i);
-        assert.ok(body.html.includes('Verify Email Address'));
-        assert.ok(body.html.includes('resend_mock_user'));
-        assert.ok(body.text.includes('resend_mock_user'));
-      } finally {
-        globalThis.fetch = originalFetch;
-        if (prevKey) process.env.RESEND_API_KEY = prevKey; else delete process.env.RESEND_API_KEY;
-        if (prevFrom) process.env.EMAIL_FROM = prevFrom; else delete process.env.EMAIL_FROM;
-      }
-    });
-
-    test('Resend HTTP API mock: non-2xx response from Resend fails signup with 503 and rolls back user', async () => {
-      const originalFetch = globalThis.fetch;
-      const prevKey = process.env.RESEND_API_KEY;
-
-      process.env.RESEND_API_KEY = 're_mock_test_key_12345';
-
-      // Simulate Resend 422 Unprocessable Entity
-      globalThis.fetch = async (url, options) => {
-        if (typeof url === 'string' && url.includes('api.resend.com')) {
-          return {
-            ok: false,
-            status: 422,
-            json: async () => ({ message: 'Domain not verified', name: 'validation_error' }),
-          };
-        }
-        return originalFetch(url, options);
-      };
-
-      try {
-        const res = await fetch(`${baseUrl}/api/auth/signup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: 'resend_fail_user',
-            email: 'resend_fail@example.com',
-            password: 'Password123!',
-          }),
-        });
-
-        assert.equal(res.status, 503);
-        const data = await res.json();
-        assert.equal(data.status, 'error');
-        assert.equal(data.code, 'EMAIL_DELIVERY_FAILED');
-
-        // Confirm rollback
-        const user = await User.findOne({ email: 'resend_fail@example.com' });
-        assert.equal(user, null);
-      } finally {
-        globalThis.fetch = originalFetch;
-        if (prevKey) process.env.RESEND_API_KEY = prevKey; else delete process.env.RESEND_API_KEY;
-      }
-    });
-
-    test('Resend HTTP API mock: network timeout fails fast with 503 and rolls back user', async () => {
-      const originalFetch = globalThis.fetch;
-      const prevKey = process.env.RESEND_API_KEY;
-
-      process.env.RESEND_API_KEY = 're_mock_test_key_12345';
-
-      // Simulate TimeoutError
-      globalThis.fetch = async (url, options) => {
-        if (typeof url === 'string' && url.includes('api.resend.com')) {
-          const timeoutErr = new Error('The operation was aborted due to timeout');
-          timeoutErr.name = 'TimeoutError';
-          throw timeoutErr;
-        }
-        return originalFetch(url, options);
-      };
-
-      try {
-        const res = await fetch(`${baseUrl}/api/auth/signup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: 'resend_timeout_user',
-            email: 'resend_timeout@example.com',
-            password: 'Password123!',
-          }),
-        });
-
-        assert.equal(res.status, 503);
-        const data = await res.json();
-        assert.equal(data.status, 'error');
-        assert.equal(data.code, 'EMAIL_DELIVERY_FAILED');
-
-        // Confirm rollback
-        const user = await User.findOne({ email: 'resend_timeout@example.com' });
-        assert.equal(user, null);
-      } finally {
-        globalThis.fetch = originalFetch;
-        if (prevKey) process.env.RESEND_API_KEY = prevKey; else delete process.env.RESEND_API_KEY;
-      }
-    });
-
-    test('security audit: error responses never leak stack traces, transport info, or credentials', async () => {
-      const prevNodeEnv = process.env.NODE_ENV;
-      delete process.env.RESEND_API_KEY;
-      process.env.NODE_ENV = 'production';
-
-      try {
-        const res = await fetch(`${baseUrl}/api/auth/signup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: 'sec_audit_user',
-            email: 'sec_audit@example.com',
-            password: 'Password123!',
-          }),
-        });
-
-        const text = await res.text();
-        assert.equal(text.includes('password'), false);
-        assert.equal(text.includes('jwt'), false);
-        assert.equal(text.includes('mongodb'), false);
-        assert.equal(text.includes('nodemailer'), false);
-        assert.equal(text.includes('re_'), false); // No Resend key prefix
-        assert.equal(text.includes('stack'), false);
-        assert.equal(text.includes('    at '), false); // No stack traces
-      } finally {
-        process.env.NODE_ENV = prevNodeEnv;
-      }
     });
   });
 
@@ -824,7 +349,6 @@ describe('Authentication & User Profile API Tests', () => {
       assert.ok(data.user);
       assert.equal(data.user.username, 'testpilot');
       assert.equal(data.user.email, 'pilot@example.com');
-      assert.equal(data.user.emailVerified, true);
       assert.equal(data.user.passwordHash, undefined);
       assert.equal(data.user.password, undefined);
     });
@@ -871,8 +395,6 @@ describe('Authentication & User Profile API Tests', () => {
       const signupData = await signupRes.json();
       userId = signupData.user.id;
 
-      // Mark verified & login
-      await User.updateOne({ _id: userId }, { emailVerified: true });
       const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1023,8 +545,6 @@ describe('Authentication & User Profile API Tests', () => {
       const data = await signupRes.json();
       testUserId = data.user.id;
 
-      // Mark verified & login
-      await User.updateOne({ _id: testUserId }, { emailVerified: true });
       const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1238,8 +758,7 @@ describe('Authentication & User Profile API Tests', () => {
       assert.equal(signupData.status, 'success');
       assert.equal(signupData.user.username, 'Semnótēs');
 
-      // Verify email & login to obtain JWT
-      await User.updateOne({ email: 'semnotes@example.com' }, { emailVerified: true });
+      // Login to obtain JWT
       const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1325,8 +844,6 @@ describe('Authentication & User Profile API Tests', () => {
           password: 'InitialPassword123!',
         }),
       });
-      const data = await signupRes.json();
-      await User.updateOne({ _id: data.user.id }, { emailVerified: true });
 
       const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
@@ -1452,8 +969,6 @@ describe('Authentication & User Profile API Tests', () => {
           password: 'Password123!',
         }),
       });
-      const data = await signupRes.json();
-      await User.updateOne({ _id: data.user.id }, { emailVerified: true });
 
       const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',

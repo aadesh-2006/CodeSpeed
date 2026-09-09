@@ -9,7 +9,6 @@ import PerformanceHistory from './components/PerformanceHistory';
 import PublicProfile from './components/PublicProfile';
 import Settings from './components/Settings';
 import UserSearch from './components/UserSearch';
-import VerifyEmail from './components/VerifyEmail';
 import { SUPPORTED_LANGUAGES, getRandomSnippet } from './data/snippets';
 import './App.css';
 
@@ -22,9 +21,8 @@ function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [historyInitialMode, setHistoryInitialMode] = useState('practice');
 
-  // Shareable Public Profile & Email Verification routing states
+  // Shareable Public Profile routing state
   const [publicProfileUsername, setPublicProfileUsername] = useState(null);
-  const [verifyEmailToken, setVerifyEmailToken] = useState(null);
 
   // Typing engine & mode states
   const [selectedMode, setSelectedMode] = useState('practice'); // 'practice' | 'ranked'
@@ -40,7 +38,7 @@ function App() {
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-  // Listen to URL hash routing for shareable public profile: #/user/:username and email verification: #/verify-email?token=...
+  // Listen to URL hash routing for shareable public profile: #/user/:username
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash || '';
@@ -48,15 +46,8 @@ function App() {
 
       if (userMatch && userMatch[1]) {
         setPublicProfileUsername(decodeURIComponent(userMatch[1]));
-        setVerifyEmailToken(null);
-      } else if (hash.startsWith('#/verify-email')) {
-        const queryParams = new URLSearchParams(hash.split('?')[1] || '');
-        const token = queryParams.get('token') || '';
-        setVerifyEmailToken(token);
-        setPublicProfileUsername(null);
       } else {
         setPublicProfileUsername(null);
-        setVerifyEmailToken(null);
       }
     };
 
@@ -202,7 +193,6 @@ function App() {
             onClick={() => {
               setCurrentView('dashboard');
               setPublicProfileUsername(null);
-              setVerifyEmailToken(null);
               window.location.hash = '';
             }}
           >
@@ -210,7 +200,7 @@ function App() {
             <span className="brand-name">CodeSpeed</span>
           </div>
 
-          {user && !publicProfileUsername && verifyEmailToken === null && (
+          {user && !publicProfileUsername && (
             <nav className="navbar-nav">
               <button
                 type="button"
@@ -301,17 +291,8 @@ function App() {
 
       {/* Main Content Area */}
       <main className="main-content">
-        {/* Email Verification Screen (Active when URL hash has #/verify-email) */}
-        {verifyEmailToken !== null ? (
-          <VerifyEmail
-            token={verifyEmailToken}
-            onProceedToLogin={() => {
-              setVerifyEmailToken(null);
-              window.location.hash = '';
-            }}
-          />
-        ) : publicProfileUsername ? (
-          /* Shareable Public Profile Screen (Active when URL hash has #/user/:username) */
+        {/* Shareable Public Profile Screen (Active when URL hash has #/user/:username) */}
+        {publicProfileUsername ? (
           <PublicProfile
             username={publicProfileUsername}
             onNavigateHome={handleClosePublicProfile}

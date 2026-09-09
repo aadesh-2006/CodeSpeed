@@ -1,10 +1,8 @@
-import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Performance from '../models/Performance.js';
 import { evaluateBadges } from '../utils/badgeRules.js';
-import { sendVerificationEmail } from '../services/emailService.js';
 import { calculateDailyStreak, isValidTimezone } from '../utils/streakCalculator.js';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -102,50 +100,30 @@ export const signup = async (req, res) => {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    // Generate single-use cryptographic verification token (256-bit entropy)
-    const rawVerificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationTokenHash = crypto.createHash('sha256').update(rawVerificationToken).digest('hex');
-    const verificationTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours expiry
-
-    // Create user in unverified state
+    // Create active user directly
     const newUser = await User.create({
       username: trimmedUsername,
       email: trimmedEmail,
       passwordHash,
-      emailVerified: false,
-      verificationTokenHash,
-      verificationTokenExpires,
-      lastVerificationEmailSentAt: new Date(),
       bio: '',
       profilePhoto: null,
       practiceStatsVisibility: 'private',
     });
 
-    // Send verification email
-    try {
-      await sendVerificationEmail(trimmedEmail, trimmedUsername, rawVerificationToken);
-    } catch (emailErr) {
-      console.error('[Auth Controller] Failed to dispatch verification email during signup:', emailErr.code || emailErr.message);
-      // Roll back / delete unverified account so email is not locked in orphaned unverified state
-      await User.deleteOne({ _id: newUser._id });
-
-      return res.status(503).json({
-        status: 'error',
-        code: 'EMAIL_DELIVERY_FAILED',
-        message: 'Unable to send verification email at this time. Please check your email address or try again shortly.',
-      });
-    }
+    // Generate JWT token
+    const token = generateToken(newUser._id.toString());
 
     return res.status(201).json({
       status: 'success',
-      message: 'Account created successfully! Please check your email to verify your account before logging in.',
-      requiresVerification: true,
-      email: newUser.email,
+      message: 'Account created successfully.',
+      token,
       user: {
         id: newUser._id.toString(),
         username: newUser.username,
         email: newUser.email,
-        emailVerified: false,
+        bio: newUser.bio || '',
+        profilePhoto: newUser.profilePhoto || null,
+        practiceStatsVisibility: newUser.practiceStatsVisibility || 'private',
         createdAt: newUser.createdAt,
       },
     });
@@ -198,16 +176,6 @@ export const login = async (req, res) => {
       });
     }
 
-    // Check if user has verified their email address (legacy accounts without field default to true)
-    if (user.emailVerified === false) {
-      return res.status(403).json({
-        status: 'error',
-        code: 'EMAIL_NOT_VERIFIED',
-        message: 'Please verify your email before logging in. Check your inbox for the verification link.',
-        email: user.email,
-      });
-    }
-
     // Generate token containing only user ID
     const token = generateToken(user._id.toString());
 
@@ -219,7 +187,6 @@ export const login = async (req, res) => {
         id: user._id.toString(),
         username: user.username,
         email: user.email,
-        emailVerified: true,
         bio: user.bio || '',
         profilePhoto: user.profilePhoto || null,
         practiceStatsVisibility: user.practiceStatsVisibility || 'private',
@@ -230,151 +197,6 @@ export const login = async (req, res) => {
     return res.status(500).json({
       status: 'error',
       message: 'Server error during login.',
-    });
-  }
-};
-
-/**
- * Verify user email address with cryptographic token.
- * GET /api/auth/verify-email?token=<token>
- * POST /api/auth/verify-email
- */
-export const verifyEmail = async (req, res) => {
-  try {
-    const rawToken = req.query?.token || req.body?.token;
-    if (!rawToken || typeof rawToken !== 'string') {
-      return res.status(400).json({
-        status: 'error',
-        code: 'TOKEN_REQUIRED',
-        message: 'Verification token is required.',
-      });
-    }
-
-    const token = rawToken.trim();
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    // Query active user with matching token that has not expired
-    const user = await User.findOne({
-      verificationTokenHash: tokenHash,
-      verificationTokenExpires: { $gt: new Date() },
-    });
-
-    if (!user) {
-      // Check if token matched an expired token
-      const expiredUser = await User.findOne({ verificationTokenHash: tokenHash });
-      if (expiredUser) {
-        return res.status(400).json({
-          status: 'error',
-          code: 'TOKEN_EXPIRED',
-          message: 'This email verification link has expired. Please request a new verification link.',
-        });
-      }
-
-      return res.status(400).json({
-        status: 'error',
-        code: 'TOKEN_INVALID',
-        message: 'Invalid or already used verification link.',
-      });
-    }
-
-    // Mark as verified and invalidate token (single-use guarantee)
-    user.emailVerified = true;
-    user.verificationTokenHash = null;
-    user.verificationTokenExpires = null;
-    await user.save();
-
-    return res.status(200).json({
-      status: 'success',
-      message: 'Email verified successfully! You can now log in to CodeSpeed.',
-      user: {
-        id: user._id.toString(),
-        username: user.username,
-        email: user.email,
-        emailVerified: true,
-      },
-    });
-  } catch (error) {
-    console.error('[Auth Controller] VerifyEmail error:', error.message);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error during email verification.',
-    });
-  }
-};
-
-/**
- * Resend email verification link with rate limiting / cooldown.
- * POST /api/auth/resend-verification
- */
-export const resendVerification = async (req, res) => {
-  try {
-    const { email } = req.body || {};
-    if (!email || typeof email !== 'string') {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Email address is required.',
-      });
-    }
-
-    const trimmedEmail = email.trim().toLowerCase();
-    const user = await User.findOne({ email: trimmedEmail });
-
-    // Anti-enumeration generic response if account does not exist or is already verified
-    const genericSuccess = {
-      status: 'success',
-      message: 'If an unverified account with that email exists, a verification link has been sent.',
-    };
-
-    if (!user || user.emailVerified) {
-      return res.status(200).json(genericSuccess);
-    }
-
-    // Cooldown check: 60 seconds per resend attempt
-    const now = Date.now();
-    if (user.lastVerificationEmailSentAt) {
-      const timeSinceLast = now - new Date(user.lastVerificationEmailSentAt).getTime();
-      const cooldownMs = 60 * 1000;
-      if (timeSinceLast < cooldownMs) {
-        const remainingSeconds = Math.ceil((cooldownMs - timeSinceLast) / 1000);
-        return res.status(429).json({
-          status: 'error',
-          code: 'RATE_LIMITED',
-          message: `Please wait ${remainingSeconds} seconds before requesting another verification email.`,
-          retryAfterSeconds: remainingSeconds,
-        });
-      }
-    }
-
-    // Generate new single-use token & 24-hour expiry (invalidating previous token)
-    const rawVerificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationTokenHash = crypto.createHash('sha256').update(rawVerificationToken).digest('hex');
-    const verificationTokenExpires = new Date(now + 24 * 60 * 60 * 1000);
-
-    user.verificationTokenHash = verificationTokenHash;
-    user.verificationTokenExpires = verificationTokenExpires;
-    user.lastVerificationEmailSentAt = new Date(now);
-    await user.save();
-
-    try {
-      await sendVerificationEmail(user.email, user.username, rawVerificationToken);
-    } catch (emailErr) {
-      console.error('[Auth Controller] Failed to dispatch verification email during resend:', emailErr.code || emailErr.message);
-      return res.status(503).json({
-        status: 'error',
-        code: 'EMAIL_DELIVERY_FAILED',
-        message: 'Unable to send verification email at this time. Please try again shortly.',
-      });
-    }
-
-    return res.status(200).json({
-      status: 'success',
-      message: 'A fresh verification link has been sent to your email address.',
-    });
-  } catch (error) {
-    console.error('[Auth Controller] ResendVerification error:', error.message);
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error resending verification email.',
     });
   }
 };
@@ -399,7 +221,6 @@ export const getMe = async (req, res) => {
         id: user._id.toString(),
         username: user.username,
         email: user.email,
-        emailVerified: user.emailVerified ?? true,
         bio: user.bio || '',
         profilePhoto: user.profilePhoto || null,
         practiceStatsVisibility: user.practiceStatsVisibility || 'private',

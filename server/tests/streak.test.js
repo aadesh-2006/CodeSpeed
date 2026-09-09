@@ -44,7 +44,6 @@ describe('Daily Typing Streak System Tests (Unified Ranked + Practice)', () => {
       username: 'streaker_dev',
       email: 'streaker@example.com',
       passwordHash: 'dummyhash',
-      emailVerified: true,
       practiceStatsVisibility: 'private',
     });
     tokenA = generateToken(userA._id.toString());
@@ -53,7 +52,6 @@ describe('Daily Typing Streak System Tests (Unified Ranked + Practice)', () => {
       username: 'other_dev',
       email: 'other@example.com',
       passwordHash: 'dummyhash',
-      emailVerified: true,
       practiceStatsVisibility: 'public',
     });
     tokenB = generateToken(userB._id.toString());

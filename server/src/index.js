@@ -83,17 +83,14 @@ app.use('/api/*', (req, res) => {
 });
 
 import { fileURLToPath } from 'url';
-import { migrateLegacyUsers } from './utils/migrateEmailVerification.js';
 
 // Start server if run directly
 const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isDirectRun) {
   // Connect to MongoDB if URI configured
-  connectDB()
-    .then(() => migrateLegacyUsers())
-    .catch((err) => {
-      console.warn(`[MongoDB] Initial connection attempt failed: ${err.message}`);
-    });
+  connectDB().catch((err) => {
+    console.warn(`[MongoDB] Initial connection attempt failed: ${err.message}`);
+  });
 
   app.listen(PORT, () => {
     console.log(`[CodeSpeed Server] running on http://localhost:${PORT}`);
