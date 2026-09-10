@@ -119,12 +119,13 @@ describe('ActivityHeatmap & StreakCard Frontend Component Tests', () => {
     assert.ok(html.includes('level-4'), 'Should contain level-4 cell');
     assert.ok(html.includes('level-5'), 'Should contain level-5 cell');
 
-    // Today indicator
-    assert.ok(html.includes('cell-today'), 'Should highlight today cell');
+    // Confirm NO special today ring/highlight
+    assert.ok(!html.includes('cell-today'), 'Should NOT include cell-today orange ring class');
 
-    // Tooltips
-    assert.ok(html.includes('Sep 9, 2026 — 18 tests (Today)'), 'Should contain tooltip for today');
-    assert.ok(html.includes('Sep 5, 2026 — 1 test'), 'Should contain tooltip for 1 test');
+    // Tooltips format: "<Mon DD, YYYY> — <N> tests"
+    assert.ok(html.includes('Sep 9, 2026 — 18 tests'), 'Should contain exact tooltip format for 18 tests');
+    assert.ok(html.includes('Sep 5, 2026 — 1 test'), 'Should contain exact tooltip format for 1 test');
+    assert.ok(html.includes('0 tests'), 'Should contain tooltip format for 0 tests');
 
     // Weekday labels
     assert.ok(html.includes('Mon'), 'Should render Mon weekday label');
@@ -154,6 +155,7 @@ describe('ActivityHeatmap & StreakCard Frontend Component Tests', () => {
     assert.ok(html.includes('status-pending'), 'Should have status-pending class');
     assert.ok(html.includes('8'), 'Should display longest streak of 8');
     assert.ok(html.includes('0 tests completed in the last year'), 'Should show 0 tests');
+    assert.ok(!html.includes('cell-today'), 'Should NOT have cell-today class');
   });
 
   test('StreakCard handles null/undefined streak state gracefully', () => {
@@ -165,6 +167,8 @@ describe('ActivityHeatmap & StreakCard Frontend Component Tests', () => {
     assert.ok(html.includes('Not Active Today'));
     assert.ok(html.includes('0'));
     assert.ok(html.includes('heatmap-weeks-grid'));
+    assert.ok(!html.includes('cell-today'));
   });
 });
+
 

@@ -80,6 +80,8 @@ export const api = {
   changePassword: (passwordPayload) => request('/api/auth/change-password', { method: 'POST', body: JSON.stringify(passwordPayload) }),
   updatePrivacy: (privacyPayload) => request('/api/auth/privacy', { method: 'PATCH', body: JSON.stringify(privacyPayload) }),
   getPublicProfile: (username) => request(`/api/users/${encodeURIComponent(username)}/profile`, { method: 'GET' }),
+  getUserDailyActivity: (username, date) =>
+    request(`/api/users/${encodeURIComponent(username)}/activity/${encodeURIComponent(date)}`, { method: 'GET' }),
   searchUsers: (query) => request(`/api/users/search?q=${encodeURIComponent(query || '')}`, { method: 'GET' }),
 
   // Performance persistence & history

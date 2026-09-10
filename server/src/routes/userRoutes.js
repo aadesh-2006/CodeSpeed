@@ -1,5 +1,5 @@
 import express from 'express';
-import { getPublicProfile, searchUsers } from '../controllers/authController.js';
+import { getPublicProfile, getUserDailyActivity, searchUsers } from '../controllers/authController.js';
 import { getUserStreak } from '../controllers/performanceController.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.js';
 
@@ -13,5 +13,8 @@ router.get('/search', authenticate, searchUsers);
 
 // Public user profile endpoint: GET /api/users/:username/profile
 router.get('/:username/profile', optionalAuthenticate, getPublicProfile);
+
+// Daily activity details endpoint: GET /api/users/:username/activity/:date
+router.get('/:username/activity/:date', optionalAuthenticate, getUserDailyActivity);
 
 export default router;

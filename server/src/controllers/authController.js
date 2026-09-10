@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Performance from '../models/Performance.js';
 import { evaluateBadges } from '../utils/badgeRules.js';
-import { calculateDailyStreak, isValidTimezone } from '../utils/streakCalculator.js';
+import { calculateDailyStreak, isValidTimezone, formatDateInTimezone } from '../utils/streakCalculator.js';
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const usernameRegex = /^[\p{L}\p{N}_]{3,30}$/u;
@@ -688,3 +688,134 @@ export const searchUsers = async (req, res) => {
     });
   }
 };
+
+/**
+ * Retrieve detailed typing activity attempts for a specific user on a calendar date (YYYY-MM-DD).
+ * GET /api/users/:username/activity/:date
+ *
+ * Privacy Rules:
+ * - Ranked activity is ALWAYS public.
+ * - Practice activity is public only when practiceStatsVisibility is 'public' OR the requester is the owner.
+ * - Timezone: evaluated in the profile owner's timezone.
+ */
+export const getUserDailyActivity = async (req, res) => {
+  try {
+    const usernameParam = req.params?.username ? String(req.params.username).trim() : '';
+    const dateParam = req.params?.date ? String(req.params.date).trim() : '';
+
+    if (!usernameParam) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Username parameter is required.',
+      });
+    }
+
+    // Validate YYYY-MM-DD date format
+    if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid date parameter. Must be in YYYY-MM-DD format.',
+      });
+    }
+
+    const [y, m, d] = dateParam.split('-').map(Number);
+    const testDate = new Date(Date.UTC(y, m - 1, d));
+    if (
+      isNaN(testDate.getTime()) ||
+      testDate.getUTCFullYear() !== y ||
+      testDate.getUTCMonth() !== m - 1 ||
+      testDate.getUTCDate() !== d
+    ) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid calendar date.',
+      });
+    }
+
+    const user = await User.findOne({
+      username: { $regex: new RegExp(`^${escapeRegex(usernameParam)}$`, 'i') },
+    });
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: `User '${usernameParam}' not found.`,
+      });
+    }
+
+    // Check if requester is the profile owner via authenticated JWT
+    const isOwner = Boolean(req.user?.id && req.user.id.toString() === user._id.toString());
+    const ownerTimezone = user.timezone || 'UTC';
+
+    // Privacy enforcement:
+    // Ranked is always public.
+    // Practice is allowed if isOwner OR practiceStatsVisibility === 'public'.
+    const canViewPractice = isOwner || user.practiceStatsVisibility === 'public';
+
+    let modeQuery = {};
+    if (!canViewPractice) {
+      modeQuery = { mode: 'ranked' };
+    }
+
+    // Broad date range (+/- 2 days UTC) to capture any timezone shift
+    const broadStart = new Date(Date.UTC(y, m - 1, d - 2));
+    const broadEnd = new Date(Date.UTC(y, m - 1, d + 3));
+
+    const docs = await Performance.find({
+      userId: user._id,
+      ...modeQuery,
+      createdAt: { $gte: broadStart, $lte: broadEnd },
+    }).sort({ createdAt: -1 });
+
+    const matchedDocs = docs.filter((doc) => {
+      const docDateStr = formatDateInTimezone(doc.createdAt, ownerTimezone);
+      return docDateStr === dateParam;
+    });
+
+    // Human-readable date
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    const formattedDate = `${months[m - 1]} ${d}, ${y}`;
+
+    const tests = matchedDocs.map((doc) => ({
+      id: doc._id ? doc._id.toString() : doc.id,
+      mode: doc.mode || 'practice',
+      language: doc.language,
+      difficulty: doc.difficulty,
+      timerSeconds: doc.timerSeconds,
+      wpm: doc.wpm,
+      accuracy: doc.accuracy,
+      correctChars: doc.correctChars,
+      incorrectChars: doc.incorrectChars,
+      elapsedSeconds: doc.elapsedSeconds,
+      snippetId: doc.snippetId,
+      createdAt: doc.createdAt,
+    }));
+
+    const rankedCount = tests.filter((t) => t.mode === 'ranked').length;
+    const practiceCount = tests.filter((t) => t.mode === 'practice').length;
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        username: user.username,
+        date: dateParam,
+        formattedDate,
+        isOwner,
+        practiceStatsVisibility: canViewPractice ? (user.practiceStatsVisibility || 'public') : 'private',
+        totalTests: tests.length,
+        rankedCount,
+        practiceCount,
+        tests,
+      },
+    });
+  } catch (error) {
+    console.error('[Auth Controller] GetUserDailyActivity error:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Server error retrieving daily activity.',
+    });
+  }
+};
+

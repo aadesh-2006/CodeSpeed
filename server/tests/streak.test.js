@@ -821,4 +821,286 @@ describe('Daily Typing Streak System Tests (Unified Ranked + Practice)', () => {
       assert.equal(data.timezone, undefined);
     });
   });
+
+  describe('Daily Activity Details API Tests (GET /api/users/:username/activity/:date)', () => {
+    test('returns 400 for missing or invalid date format', async () => {
+      const { getUserDailyActivity } = await import('../src/controllers/authController.js');
+
+      let resCode = null;
+      let resBody = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resBody = d; } };
+        },
+      };
+
+      await getUserDailyActivity({ params: { username: userA.username, date: 'invalid-date' } }, res);
+      assert.equal(resCode, 400);
+      assert.equal(resBody.status, 'error');
+
+      await getUserDailyActivity({ params: { username: userA.username, date: '2026-02-31' } }, res);
+      assert.equal(resCode, 400);
+      assert.equal(resBody.status, 'error');
+    });
+
+    test('returns 404 for non-existent user', async () => {
+      const { getUserDailyActivity } = await import('../src/controllers/authController.js');
+
+      let resCode = null;
+      let resBody = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resBody = d; } };
+        },
+      };
+
+      await getUserDailyActivity({ params: { username: 'nonexistent_user', date: '2026-09-10' } }, res);
+      assert.equal(resCode, 404);
+      assert.equal(resBody.status, 'error');
+    });
+
+    test('returns clean 0-test response with 200 for date with no recorded attempts', async () => {
+      const { getUserDailyActivity } = await import('../src/controllers/authController.js');
+
+      let resCode = null;
+      let resBody = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resBody = d; } };
+        },
+      };
+
+      await getUserDailyActivity({ params: { username: userA.username, date: '2026-09-10' } }, res);
+      assert.equal(resCode, 200);
+      assert.equal(resBody.status, 'success');
+      assert.equal(resBody.data.totalTests, 0);
+      assert.equal(resBody.data.tests.length, 0);
+      assert.equal(resBody.data.formattedDate, 'September 10, 2026');
+    });
+
+    test('public visitor sees only Ranked tests when user practiceStatsVisibility is private', async () => {
+      const { getUserDailyActivity } = await import('../src/controllers/authController.js');
+
+      const targetDate = new Date('2026-09-10T10:00:00Z');
+
+      // 2 Ranked + 1 Practice
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'javascript',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 80,
+        accuracy: 98,
+        correctChars: 320,
+        incorrectChars: 2,
+        elapsedSeconds: 60,
+        snippetId: 'js-r1',
+        createdAt: targetDate,
+      });
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'python',
+        difficulty: 'easy',
+        timerSeconds: 30,
+        wpm: 85,
+        accuracy: 99,
+        correctChars: 180,
+        incorrectChars: 1,
+        elapsedSeconds: 30,
+        snippetId: 'py-r1',
+        createdAt: new Date('2026-09-10T14:00:00Z'),
+      });
+      await Performance.create({
+        userId: userA._id,
+        mode: 'practice',
+        language: 'cpp',
+        difficulty: 'hard',
+        timerSeconds: 120,
+        wpm: 75,
+        accuracy: 95,
+        correctChars: 450,
+        incorrectChars: 10,
+        elapsedSeconds: 120,
+        snippetId: 'cpp-p1',
+        createdAt: new Date('2026-09-10T16:00:00Z'),
+      });
+
+      // Visitor (unauthenticated or userB) requesting userA's activity
+      let resCode = null;
+      let resBody = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resBody = d; } };
+        },
+      };
+
+      await getUserDailyActivity({ params: { username: userA.username, date: '2026-09-10' } }, res);
+      assert.equal(resCode, 200);
+      assert.equal(resBody.data.isOwner, false);
+      assert.equal(resBody.data.totalTests, 2);
+      assert.equal(resBody.data.rankedCount, 2);
+      assert.equal(resBody.data.practiceCount, 0);
+      assert.ok(resBody.data.tests.every((t) => t.mode === 'ranked'));
+    });
+
+    test('profile owner can view both Ranked and Practice attempts on their daily activity', async () => {
+      const { getUserDailyActivity } = await import('../src/controllers/authController.js');
+
+      // Create 2 Ranked + 1 Practice performances
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'javascript',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 80,
+        accuracy: 98,
+        correctChars: 320,
+        incorrectChars: 2,
+        elapsedSeconds: 60,
+        snippetId: 'js-r1',
+        createdAt: new Date('2026-09-10T10:00:00Z'),
+      });
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'python',
+        difficulty: 'easy',
+        timerSeconds: 30,
+        wpm: 85,
+        accuracy: 99,
+        correctChars: 180,
+        incorrectChars: 1,
+        elapsedSeconds: 30,
+        snippetId: 'py-r1',
+        createdAt: new Date('2026-09-10T14:00:00Z'),
+      });
+      await Performance.create({
+        userId: userA._id,
+        mode: 'practice',
+        language: 'cpp',
+        difficulty: 'hard',
+        timerSeconds: 120,
+        wpm: 75,
+        accuracy: 95,
+        correctChars: 450,
+        incorrectChars: 10,
+        elapsedSeconds: 120,
+        snippetId: 'cpp-p1',
+        createdAt: new Date('2026-09-10T16:00:00Z'),
+      });
+
+      let resCode = null;
+      let resBody = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resBody = d; } };
+        },
+      };
+
+      // Owner requesting their own activity
+      await getUserDailyActivity({
+        params: { username: userA.username, date: '2026-09-10' },
+        user: { id: userA._id.toString() },
+      }, res);
+
+      assert.equal(resCode, 200);
+      assert.equal(resBody.data.isOwner, true);
+      assert.equal(resBody.data.totalTests, 3);
+      assert.equal(resBody.data.rankedCount, 2);
+      assert.equal(resBody.data.practiceCount, 1);
+    });
+
+    test('public visitor can view Practice attempts when user has practiceStatsVisibility public', async () => {
+      const { getUserDailyActivity } = await import('../src/controllers/authController.js');
+
+      // User B has practiceStatsVisibility = public
+      await Performance.create({
+        userId: userB._id,
+        mode: 'practice',
+        language: 'python',
+        difficulty: 'easy',
+        timerSeconds: 60,
+        wpm: 70,
+        accuracy: 97,
+        correctChars: 280,
+        incorrectChars: 3,
+        elapsedSeconds: 60,
+        snippetId: 'py-p2',
+        createdAt: new Date('2026-09-10T11:00:00Z'),
+      });
+
+      let resCode = null;
+      let resBody = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resBody = d; } };
+        },
+      };
+
+      // User A visits User B
+      await getUserDailyActivity({
+        params: { username: userB.username, date: '2026-09-10' },
+        user: { id: userA._id.toString() },
+      }, res);
+
+      assert.equal(resCode, 200);
+      assert.equal(resBody.data.isOwner, false);
+      assert.equal(resBody.data.totalTests, 1);
+      assert.equal(resBody.data.practiceCount, 1);
+      assert.equal(resBody.data.tests[0].mode, 'practice');
+    });
+
+    test('accurately filters attempts by calendar date according to user timezone', async () => {
+      const { getUserDailyActivity } = await import('../src/controllers/authController.js');
+
+      // Set userA timezone to Asia/Tokyo (UTC+9)
+      await User.updateOne({ _id: userA._id }, { timezone: 'Asia/Tokyo' });
+
+      // 2026-09-08 16:00:00 UTC is 2026-09-09 01:00:00 in Tokyo
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'javascript',
+        difficulty: 'easy',
+        timerSeconds: 60,
+        wpm: 90,
+        accuracy: 99,
+        correctChars: 360,
+        incorrectChars: 1,
+        elapsedSeconds: 60,
+        snippetId: 'js-tz',
+        createdAt: new Date('2026-09-08T16:00:00.000Z'),
+      });
+
+      let resCode = null;
+      let resBody = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resBody = d; } };
+        },
+      };
+
+      // Querying 2026-09-09 Tokyo calendar day
+      await getUserDailyActivity({ params: { username: userA.username, date: '2026-09-09' } }, res);
+      assert.equal(resCode, 200);
+      assert.equal(resBody.data.totalTests, 1);
+      assert.equal(resBody.data.tests[0].snippetId, 'js-tz');
+
+      // Querying 2026-09-08 Tokyo calendar day -> 0 tests
+      await getUserDailyActivity({ params: { username: userA.username, date: '2026-09-08' } }, res);
+      assert.equal(resCode, 200);
+      assert.equal(resBody.data.totalTests, 0);
+    });
+  });
 });
+

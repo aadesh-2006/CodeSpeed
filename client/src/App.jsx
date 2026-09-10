@@ -7,6 +7,7 @@ import TypingTest from './components/TypingTest';
 import TestResult from './components/TestResult';
 import PerformanceHistory from './components/PerformanceHistory';
 import PublicProfile from './components/PublicProfile';
+import DailyActivity from './components/DailyActivity';
 import Settings from './components/Settings';
 import UserSearch from './components/UserSearch';
 import { SUPPORTED_LANGUAGES, getRandomSnippet } from './data/snippets';
@@ -21,8 +22,9 @@ function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [historyInitialMode, setHistoryInitialMode] = useState('practice');
 
-  // Shareable Public Profile routing state
+  // Shareable Public Profile & Daily Activity routing state
   const [publicProfileUsername, setPublicProfileUsername] = useState(null);
+  const [dailyActivityRoute, setDailyActivityRoute] = useState(null);
 
   // Typing engine & mode states
   const [selectedMode, setSelectedMode] = useState('practice'); // 'practice' | 'ranked'
@@ -38,15 +40,28 @@ function App() {
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-  // Listen to URL hash routing for shareable public profile: #/user/:username
+  // Listen to URL hash routing for #/user/:username and #/user/:username/activity/:date
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash || '';
-      const userMatch = hash.match(/^#\/user\/([^/?#]+)/);
 
+      // Match #/user/:username/activity/:date or /user/:username/activity/:date
+      const activityMatch = hash.match(/^#\/user\/([^/?#]+)\/activity\/([^/?#]+)/);
+      if (activityMatch && activityMatch[1] && activityMatch[2]) {
+        setPublicProfileUsername(null);
+        setDailyActivityRoute({
+          username: decodeURIComponent(activityMatch[1]),
+          date: decodeURIComponent(activityMatch[2]),
+        });
+        return;
+      }
+
+      const userMatch = hash.match(/^#\/user\/([^/?#]+)/);
       if (userMatch && userMatch[1]) {
+        setDailyActivityRoute(null);
         setPublicProfileUsername(decodeURIComponent(userMatch[1]));
       } else {
+        setDailyActivityRoute(null);
         setPublicProfileUsername(null);
       }
     };
@@ -291,8 +306,17 @@ function App() {
 
       {/* Main Content Area */}
       <main className="main-content">
-        {/* Shareable Public Profile Screen (Active when URL hash has #/user/:username) */}
-        {publicProfileUsername ? (
+        {/* Daily Activity Details View (#/user/:username/activity/:date) */}
+        {dailyActivityRoute ? (
+          <DailyActivity
+            username={dailyActivityRoute.username}
+            date={dailyActivityRoute.date}
+            onNavigateBack={() => {
+              window.location.hash = `/user/${encodeURIComponent(dailyActivityRoute.username)}`;
+            }}
+            onNavigateHome={handleClosePublicProfile}
+          />
+        ) : publicProfileUsername ? (
           <PublicProfile
             username={publicProfileUsername}
             onNavigateHome={handleClosePublicProfile}

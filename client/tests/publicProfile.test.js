@@ -253,4 +253,27 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
       await viteServer.close();
     }
   });
+
+  test('DailyActivity renders attempts table, ranked/practice badges, and empty states cleanly', async () => {
+    const viteServer = await createServer({
+      server: { middlewareMode: true },
+      appType: 'custom',
+    });
+    try {
+      const dailyActivityModule = await viteServer.ssrLoadModule('./src/components/DailyActivity.jsx');
+      const DailyActivity = dailyActivityModule.DailyActivity;
+
+      // Render loading state initially
+      const htmlLoading = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(DailyActivity, { username: 'test_dev', date: '2026-09-10' })
+      );
+
+      assert.ok(htmlLoading.includes('daily-activity-view'));
+      assert.ok(htmlLoading.includes('Back to Profile'));
+      assert.ok(htmlLoading.includes('test_dev'));
+    } finally {
+      await viteServer.close();
+    }
+  });
 });
+

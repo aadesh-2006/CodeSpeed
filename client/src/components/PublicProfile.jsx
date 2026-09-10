@@ -113,7 +113,10 @@ export function PublicProfile({ username, onNavigateHome, onNavigateSettings }) 
 
           {/* Daily Streak Section (Always Public) */}
           {profile.streak && (
-            <StreakCard streak={profile.streak} />
+            <StreakCard
+              streak={profile.streak}
+              username={profile.username}
+            />
           )}
 
           {/* Mode-Specific Performance Section */}

@@ -216,7 +216,10 @@ export function Dashboard({
       {!loading && !error && summary.totalTests === 0 && (
         <div className="dashboard-grid">
           {streak && (
-            <StreakCard streak={streak} />
+            <StreakCard
+              streak={streak}
+              username={user?.username}
+            />
           )}
 
           <div className="panel state-panel empty">
@@ -243,7 +246,10 @@ export function Dashboard({
         <div className="dashboard-grid">
           {/* Daily Streak Widget (Unified Practice & Ranked) */}
           {streak && (
-            <StreakCard streak={streak} />
+            <StreakCard
+              streak={streak}
+              username={user?.username}
+            />
           )}
 
           {/* Key Metrics Row */}

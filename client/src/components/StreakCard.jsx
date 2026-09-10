@@ -101,7 +101,7 @@ function getDayOfWeek(dateStr) {
  * Displays a 52-week calendar grid (Sun–Sat) with month headers, weekday labels,
  * intensity level squares based on test count, and streak summaries.
  */
-export function ActivityHeatmap({ streak, loading = false }) {
+export function ActivityHeatmap({ streak, username, onSelectDate, loading = false }) {
   const {
     currentStreak = 0,
     longestStreak = 0,
@@ -195,6 +195,14 @@ export function ActivityHeatmap({ streak, loading = false }) {
     };
   }, [streak, referenceToday]);
 
+  const handleDateClick = (dateStr) => {
+    if (onSelectDate) {
+      onSelectDate(dateStr);
+    } else if (username) {
+      window.location.hash = `/user/${encodeURIComponent(username)}/activity/${dateStr}`;
+    }
+  };
+
   return (
     <div className="activity-heatmap-card">
       {/* Header with Title, Active Status, and Metrics */}
@@ -272,25 +280,27 @@ export function ActivityHeatmap({ streak, loading = false }) {
               {weeks.map((week) => (
                 <div key={week.weekIndex} className="heatmap-week-col" role="row">
                   {week.days.map((day) => {
-                    const countText =
-                      day.testCount === 0
-                        ? 'No tests'
-                        : day.testCount === 1
-                        ? '1 test'
-                        : `${day.testCount} tests`;
+                    const countText = `${day.testCount} ${day.testCount === 1 ? 'test' : 'tests'}`;
                     const dateLabel = formatHeatmapDate(day.date);
-                    const tooltip = `${dateLabel} — ${countText}${day.isToday ? ' (Today)' : ''}`;
+                    const tooltip = `${dateLabel} — ${countText}`;
 
                     return (
                       <div
                         key={day.date}
-                        className={`heatmap-cell level-${day.level} ${day.isToday ? 'cell-today' : ''} ${
-                          day.isFuture ? 'cell-future' : ''
+                        className={`heatmap-cell level-${day.level} ${
+                          day.isFuture ? 'cell-future' : 'cell-clickable'
                         }`}
                         title={day.isFuture ? undefined : tooltip}
-                        aria-label={day.isFuture ? undefined : `${dateLabel}: ${countText}`}
+                        aria-label={day.isFuture ? undefined : tooltip}
                         role="gridcell"
                         tabIndex={day.isFuture ? -1 : 0}
+                        onClick={() => !day.isFuture && handleDateClick(day.date)}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Enter' || e.key === ' ') && !day.isFuture) {
+                            e.preventDefault();
+                            handleDateClick(day.date);
+                          }
+                        }}
                       />
                     );
                   })}
@@ -304,7 +314,7 @@ export function ActivityHeatmap({ streak, loading = false }) {
       {/* Footer with Legend */}
       <div className="heatmap-footer">
         <span className="heatmap-hint">
-          Complete typing tests (Practice or Ranked) to build your activity streak.
+          Click any day to view detailed typing activity.
         </span>
         <div className="heatmap-legend" aria-label="Activity intensity level legend">
           <span className="legend-label">Less</span>
@@ -329,4 +339,5 @@ export function StreakCard(props) {
 }
 
 export default StreakCard;
+
 
