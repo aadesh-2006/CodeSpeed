@@ -231,7 +231,7 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
     }
   });
 
-  test('StreakCard renders inside PublicProfile with active streak and 7-day indicators', async () => {
+  test('StreakCard renders inside PublicProfile with active streak and heatmap grid', async () => {
     const viteServer = await createServer({
       server: { middlewareMode: true },
       appType: 'custom',
@@ -248,7 +248,7 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
       assert.ok(html.includes('7'));
       assert.ok(html.includes('14'));
       assert.ok(html.includes('Active Today'));
-      assert.ok(html.includes('recent-days-row'));
+      assert.ok(html.includes('heatmap-weeks-grid'));
     } finally {
       await viteServer.close();
     }

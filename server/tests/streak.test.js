@@ -97,7 +97,7 @@ describe('Daily Typing Streak System Tests (Unified Ranked + Practice)', () => {
       assert.equal(result.activeToday, true);
     });
 
-    test('multiple sessions on same day count once without duplicating streak', () => {
+    test('multiple sessions on same day count once without duplicating streak and aggregate dailyActivity testCount', () => {
       const timestamps = [
         '2026-09-08T09:00:00Z',
         '2026-09-08T14:30:00Z',
@@ -112,6 +112,14 @@ describe('Daily Typing Streak System Tests (Unified Ranked + Practice)', () => {
       assert.equal(result.currentStreak, 2);
       assert.equal(result.longestStreak, 2);
       assert.equal(result.activeToday, true);
+
+      // Verify dailyActivity aggregation
+      assert.ok(Array.isArray(result.dailyActivity));
+      assert.equal(result.dailyActivity.length, 2);
+      assert.deepEqual(result.dailyActivity, [
+        { date: '2026-09-08', testCount: 3 },
+        { date: '2026-09-09', testCount: 2 },
+      ]);
     });
 
     test('missed day breaks current streak (current = 0), while longest streak is preserved', () => {
@@ -731,6 +739,23 @@ describe('Daily Typing Streak System Tests (Unified Ranked + Practice)', () => {
       assert.equal(resData.data.streak.activeToday, true);
       assert.equal(resData.data.streak.currentStreak, 1);
       assert.equal(resData.data.streak.longestStreak, 1);
+      // Since visitor and userA practice is private, visitor dailyActivity only has ranked (0 in this case)
+      assert.deepEqual(resData.data.streak.dailyActivity, []);
+
+      // But when owner visits their own profile, owner dailyActivity includes their practice session!
+      let ownerResCode = null;
+      let ownerResData = null;
+      const ownerRes = {
+        status: (c) => {
+          ownerResCode = c;
+          return { json: (d) => { ownerResData = d; } };
+        },
+      };
+      await getPublicProfile({ params: { username: userA.username }, user: { id: userA._id.toString() } }, ownerRes);
+      assert.equal(ownerResCode, 200);
+      assert.equal(ownerResData.data.isOwner, true);
+      assert.equal(ownerResData.data.streak.dailyActivity.length, 1);
+      assert.equal(ownerResData.data.streak.dailyActivity[0].testCount, 1);
     });
 
     test('calculates public streak in profile owner timezone', async () => {

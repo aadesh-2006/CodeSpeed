@@ -600,12 +600,21 @@ export const getPublicProfile = async (req, res) => {
     const ownerTimezone = user.timezone || 'UTC';
     const streakMetrics = calculateDailyStreak(allTimestamps, { timeZone: ownerTimezone });
 
+    // For public visitor when practice stats are private, filter heatmap dailyActivity to only ranked tests
+    let publicDailyActivity = streakMetrics.dailyActivity;
+    if (!isOwner && user.practiceStatsVisibility !== 'public') {
+      const rankedTimestamps = rankedDocs.map((p) => p.createdAt);
+      const rankedStreak = calculateDailyStreak(rankedTimestamps, { timeZone: ownerTimezone });
+      publicDailyActivity = rankedStreak.dailyActivity;
+    }
+
     const publicStreak = {
       currentStreak: streakMetrics.currentStreak,
       longestStreak: streakMetrics.longestStreak,
       activeToday: streakMetrics.activeToday,
       today: streakMetrics.today,
       recentDays: streakMetrics.recentDays,
+      dailyActivity: publicDailyActivity,
     };
 
     return res.status(200).json({

@@ -115,17 +115,24 @@ export const calculateDailyStreak = (performanceTimestamps = [], options = {}) =
       recentDays,
       activeDates: [],
       practicedDates: [],
+      dailyActivity: [],
     };
   }
 
-  // 1. Convert all session timestamps to unique YYYY-MM-DD date strings in user timezone
+  // 1. Convert all session timestamps to unique YYYY-MM-DD date strings in user timezone & count tests
+  const activityMap = {};
   const dateSet = new Set();
   for (const ts of performanceTimestamps) {
     const formatted = formatDateInTimezone(ts, timeZone);
     if (formatted) {
       dateSet.add(formatted);
+      activityMap[formatted] = (activityMap[formatted] || 0) + 1;
     }
   }
+
+  const dailyActivity = Object.entries(activityMap)
+    .map(([date, testCount]) => ({ date, testCount }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const sortedDates = Array.from(dateSet).sort();
   const activeToday = dateSet.has(todayStr);
@@ -191,6 +198,7 @@ export const calculateDailyStreak = (performanceTimestamps = [], options = {}) =
     recentDays,
     activeDates: recentActiveDates,
     practicedDates: recentActiveDates,
+    dailyActivity,
   };
 };
 

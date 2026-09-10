@@ -1558,8 +1558,9 @@ body {
 }
 
 /* ========================================================
-   Daily Practice Streak Widget (Developer-Tool Aesthetic)
+   Daily Streak & Contribution Activity Heatmap (GitHub/LeetCode Style)
    ======================================================== */
+.activity-heatmap-card,
 .streak-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
@@ -1571,6 +1572,7 @@ body {
   width: 100%;
 }
 
+.heatmap-header,
 .streak-card-header {
   display: flex;
   align-items: center;
@@ -1579,27 +1581,75 @@ body {
   flex-wrap: wrap;
 }
 
+.heatmap-title-group,
 .streak-title-group {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
 }
 
+.heatmap-title-badge,
 .streak-title-badge {
   display: flex;
   align-items: center;
   gap: 0.4rem;
 }
 
+.heatmap-title,
 .streak-title {
   font-size: 0.95rem;
   font-weight: 800;
   color: var(--text-primary);
   letter-spacing: -0.01em;
+  margin: 0;
 }
 
+.heatmap-subtitle,
 .streak-subtitle {
   font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.heatmap-stats-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.heatmap-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+
+.stat-pill-label {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+}
+
+.stat-pill-value-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+.stat-pill-number {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-size: 0.88rem;
+}
+
+.stat-pill-unit {
+  font-size: 0.7rem;
   color: var(--text-muted);
 }
 
@@ -1607,7 +1657,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.25rem 0.65rem;
+  padding: 0.3rem 0.65rem;
   border-radius: var(--radius-sm);
   font-size: 0.75rem;
   font-weight: 700;
@@ -1626,128 +1676,187 @@ body {
   color: var(--text-muted);
 }
 
-.streak-card-body {
+/* Heatmap Grid & Scrollable Container */
+.heatmap-scroll-container {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.35rem 0 0.5rem 0;
+}
+
+.heatmap-inner-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 680px;
+}
+
+.heatmap-months-row {
+  display: flex;
+  align-items: flex-end;
+  height: 16px;
+}
+
+.heatmap-weekday-spacer {
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.heatmap-months-track {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) 2fr;
-  gap: 1.25rem;
+  grid-template-columns: repeat(52, 10px);
+  gap: 3px;
+}
+
+.heatmap-month-col {
+  position: relative;
+  width: 10px;
+  height: 14px;
+}
+
+.heatmap-month-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.heatmap-grid-row {
+  display: flex;
+  gap: 0;
+  align-items: flex-start;
+}
+
+.heatmap-weekdays-col {
+  width: 28px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.heatmap-weekday-label {
+  height: 10px;
+  font-size: 0.62rem;
+  color: var(--text-dim, #71717a);
+  font-weight: 600;
+  line-height: 10px;
+  user-select: none;
+}
+
+.heatmap-weeks-grid {
+  display: grid;
+  grid-template-columns: repeat(52, 10px);
+  gap: 3px;
+}
+
+.heatmap-week-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.heatmap-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  box-sizing: border-box;
+  outline: none;
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.1s ease;
+}
+
+.heatmap-cell:hover,
+.heatmap-cell:focus-visible {
+  transform: scale(1.35);
+  z-index: 3;
+}
+
+/* Activity Levels (0 to 5) */
+.heatmap-cell.level-0 {
+  background-color: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.heatmap-cell.level-1 {
+  background-color: #0e4429;
+  border: 1px solid rgba(14, 68, 41, 0.9);
+}
+
+.heatmap-cell.level-2 {
+  background-color: #006d32;
+  border: 1px solid rgba(0, 109, 50, 0.9);
+}
+
+.heatmap-cell.level-3 {
+  background-color: #26a641;
+  border: 1px solid rgba(38, 166, 65, 0.9);
+}
+
+.heatmap-cell.level-4 {
+  background-color: #39d353;
+  border: 1px solid rgba(57, 211, 83, 0.9);
+}
+
+.heatmap-cell.level-5 {
+  background-color: #56e36d;
+  border: 1px solid #56e36d;
+  box-shadow: 0 0 4px rgba(86, 227, 109, 0.5);
+}
+
+.heatmap-cell.cell-today {
+  outline: 1.5px solid #f59e0b;
+  outline-offset: 1px;
+}
+
+.heatmap-cell.cell-future {
+  opacity: 0.15;
+  pointer-events: none;
+  cursor: default;
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+/* Heatmap Footer & Legend */
+.heatmap-footer {
+  display: flex;
   align-items: center;
-  padding-top: 0.75rem;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-top: 0.5rem;
   border-top: 1px solid var(--border-subtle);
 }
 
-@media (max-width: 768px) {
-  .streak-card-body {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-}
-
-.streak-metrics-col {
-  display: flex;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.streak-metric-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.streak-metric-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  font-weight: 700;
-}
-
-.streak-metric-value-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-}
-
-.streak-metric-number {
-  font-family: var(--font-mono);
-  font-size: 1.75rem;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.streak-metric-unit {
-  font-size: 0.75rem;
+.heatmap-hint {
+  font-size: 0.72rem;
   color: var(--text-muted);
 }
 
-/* 7-Day Activity Strip */
-.streak-calendar-col {
+.heatmap-legend {
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.streak-calendar-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  font-weight: 700;
-}
-
-.recent-days-row {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 0.4rem;
-}
-
-.day-cell {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.4rem 0.25rem;
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  transition: border-color 0.15s ease;
+  gap: 3px;
+  margin-left: auto;
 }
 
-.day-cell.day-today {
-  border-color: rgba(245, 158, 11, 0.4);
-}
-
-.day-cell.day-practiced {
-  background: rgba(245, 158, 11, 0.06);
-}
-
-.day-label {
+.legend-label {
   font-size: 0.68rem;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 500;
+  padding: 0 2px;
 }
 
-.day-today .day-label {
-  color: #f59e0b;
-  font-weight: 800;
+.heatmap-legend .heatmap-cell {
+  cursor: default;
 }
-
-.day-flame-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 20px;
-}
-
-.day-status-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: transparent;
-}
-
-.day-practiced .day-status-dot {
-  background: #f59e0b;
+.heatmap-legend .heatmap-cell:hover {
+  transform: none;
 }
 
 /* Flame SVG States */
