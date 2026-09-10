@@ -815,7 +815,7 @@ body {
   border-left-color: var(--accent-orange);
 }
 
-/* Activity List */
+/* Activity List in Dashboard */
 .activity-list {
   display: flex;
   flex-direction: column;
@@ -823,7 +823,7 @@ body {
   width: 100%;
 }
 
-.activity-row {
+.activity-list .activity-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3184,6 +3184,7 @@ body {
 .activity-table-panel {
   padding: 0;
   overflow: hidden;
+  width: 100%;
 }
 
 .activity-table-wrapper {
@@ -3209,35 +3210,38 @@ body {
   color: var(--text-muted);
   background: rgba(255, 255, 255, 0.02);
   border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
 }
 
 .activity-table td {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
   vertical-align: middle;
+  white-space: nowrap;
 }
 
-.activity-row {
+.activity-attempt-row {
+  display: table-row;
   transition: background-color 0.15s ease;
 }
 
-.activity-row:hover {
+.activity-attempt-row:hover td {
   background: rgba(255, 255, 255, 0.025);
 }
 
-.activity-row:last-child td {
+.activity-attempt-row:last-child td {
   border-bottom: none;
 }
 
 .col-num {
-  width: 45px;
+  width: 5%;
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 0.78rem;
 }
 
 .col-mode {
-  width: 105px;
+  width: 12%;
 }
 
 .badge-mode {
@@ -3263,11 +3267,11 @@ body {
 }
 
 .col-lang {
-  width: 120px;
+  width: 16%;
 }
 
 .col-diff {
-  width: 95px;
+  width: 13%;
 }
 
 .badge-diff {
@@ -3295,13 +3299,13 @@ body {
 }
 
 .col-timer {
-  width: 80px;
+  width: 10%;
   font-family: var(--font-mono);
   color: var(--text-secondary);
 }
 
 .col-wpm {
-  width: 110px;
+  width: 14%;
 }
 
 .wpm-mono {
@@ -3316,7 +3320,7 @@ body {
 }
 
 .col-acc {
-  width: 90px;
+  width: 12%;
 }
 
 .acc-val {
@@ -3326,7 +3330,7 @@ body {
 }
 
 .col-time {
-  width: 100px;
+  width: 18%;
   font-size: 0.75rem;
 }
 

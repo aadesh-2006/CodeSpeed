@@ -171,7 +171,7 @@ export function DailyActivity({ username, date, onNavigateBack, onNavigateHome }
                     {tests.map((test, index) => {
                       const isRanked = test.mode === 'ranked';
                       return (
-                        <tr key={test.id || index} className={`activity-row ${isRanked ? 'row-ranked' : 'row-practice'}`}>
+                        <tr key={test.id || index} className={`activity-attempt-row ${isRanked ? 'row-ranked' : 'row-practice'}`}>
                           <td className="col-num">{tests.length - index}</td>
                           <td className="col-mode">
                             <span className={`badge-mode ${isRanked ? 'badge-ranked' : 'badge-practice'}`}>
