@@ -162,6 +162,7 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
               progressPercent: data.progressPercent !== undefined ? data.progressPercent : p.progressPercent,
               currentPosition: data.currentPosition !== undefined ? data.currentPosition : p.currentPosition,
               liveWpm: data.liveWpm !== undefined ? data.liveWpm : p.liveWpm,
+              accuracy: data.accuracy !== undefined ? data.accuracy : p.accuracy,
             };
           }
           return p;

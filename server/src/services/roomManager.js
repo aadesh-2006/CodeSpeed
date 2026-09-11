@@ -454,6 +454,12 @@ class RoomManager {
         for (const p of room.participants) {
           if (p.status === 'racing' || p.status === 'joined') {
             p.status = 'timed_out';
+            if (!p.elapsedSeconds) {
+              p.elapsedSeconds = room.config.timerSeconds;
+            }
+            if (!p.wpm && p.liveWpm > 0) {
+              p.wpm = p.liveWpm;
+            }
           }
         }
         await this.finalizeRoom(cleanCode, onFinished);
@@ -466,7 +472,7 @@ class RoomManager {
   /**
    * Update participant live progress (throttled).
    */
-  updateProgress({ roomCode, userId, progressPercent, currentPosition, liveWpm }) {
+  updateProgress({ roomCode, userId, progressPercent, currentPosition, liveWpm, accuracy, correctChars, incorrectChars }) {
     const cleanCode = (roomCode || '').toUpperCase().trim();
     const room = this.rooms.get(cleanCode);
     if (!room || room.status !== 'active') return null;
@@ -484,6 +490,15 @@ class RoomManager {
     participant.progressPercent = Math.min(100, Math.max(0, Number(progressPercent) || 0));
     participant.currentPosition = Math.max(0, Number(currentPosition) || 0);
     participant.liveWpm = Math.max(0, Number(liveWpm) || 0);
+    if (accuracy !== undefined && accuracy !== null) {
+      participant.accuracy = Math.max(0, Math.min(100, Number(accuracy) || 0));
+    }
+    if (correctChars !== undefined && correctChars !== null) {
+      participant.correctChars = Math.max(0, Number(correctChars) || 0);
+    }
+    if (incorrectChars !== undefined && incorrectChars !== null) {
+      participant.incorrectChars = Math.max(0, Number(incorrectChars) || 0);
+    }
 
     return {
       userId: participant.userId.toString(),
@@ -491,6 +506,7 @@ class RoomManager {
       progressPercent: participant.progressPercent,
       currentPosition: participant.currentPosition,
       liveWpm: participant.liveWpm,
+      accuracy: participant.accuracy,
     };
   }
 
@@ -507,9 +523,42 @@ class RoomManager {
 
     if (room.status !== 'active' && room.status !== 'countdown') {
       if (room.status === 'finished') {
-        // Return existing finished result if already finalized
-        const existingResult = room.participants.find((p) => p.userId.toString() === userId.toString());
-        return { participant: existingResult, room: this.formatRoomState(room), allFinished: true };
+        // Late arrival right around timeout: update metrics in memory & DB
+        const existingParticipant = room.participants.find((p) => p.userId.toString() === userId.toString());
+        if (existingParticipant && submission) {
+          const { correctChars = 0, incorrectChars = 0, completedSnippet = false } = submission;
+          const targetCode = room.snippet.code;
+          const safeCorrect = Math.max(0, Math.min(targetCode.length + 50, parseInt(correctChars, 10) || 0));
+          const safeIncorrect = Math.max(0, parseInt(incorrectChars, 10) || 0);
+          const totalChars = safeCorrect + safeIncorrect;
+          let computedWpm = Math.round((safeCorrect / 5) / (room.config.timerSeconds / 60));
+          if (isNaN(computedWpm) || computedWpm < 0) computedWpm = 0;
+          let computedAccuracy = 100;
+          if (totalChars > 0) {
+            computedAccuracy = Math.round(((safeCorrect / totalChars) * 100) * 10) / 10;
+            computedAccuracy = Math.max(0, Math.min(100, computedAccuracy));
+          }
+
+          if (existingParticipant.accuracy === 0 && computedAccuracy > 0) {
+            existingParticipant.accuracy = computedAccuracy;
+          }
+          if (existingParticipant.wpm === 0 && computedWpm > 0) {
+            existingParticipant.wpm = computedWpm;
+          }
+          if (!existingParticipant.elapsedSeconds) {
+            existingParticipant.elapsedSeconds = room.config.timerSeconds;
+          }
+
+          CompetitionResult.updateOne(
+            { roomCode: cleanCode, userId: existingParticipant.userId },
+            {
+              wpm: existingParticipant.wpm || existingParticipant.liveWpm || computedWpm,
+              accuracy: existingParticipant.accuracy || computedAccuracy,
+              completionTimeSeconds: existingParticipant.elapsedSeconds || room.config.timerSeconds,
+            }
+          ).catch((err) => console.error('[RoomManager] Late submission update error:', err.message));
+        }
+        return { participant: existingParticipant, room: this.formatRoomState(room), allFinished: true };
       }
       throw new Error(`Cannot submit in '${room.status}' state.`);
     }
@@ -552,18 +601,20 @@ class RoomManager {
       computedAccuracy = Math.max(0, Math.min(100, computedAccuracy));
     }
 
+    const isFullyCompleted = Boolean(completedSnippet || safeCorrect >= targetCode.length);
+
     // Determine current rank among finished participants
     const currentlyFinished = room.participants.filter((p) => p.status === 'finished');
     const rank = currentlyFinished.length + 1;
 
-    participant.status = 'finished';
-    participant.progressPercent = 100;
+    participant.status = isFullyCompleted ? 'finished' : (now >= new Date(room.raceEndsAt).getTime() ? 'timed_out' : 'incomplete');
+    participant.progressPercent = isFullyCompleted ? 100 : (targetCode.length > 0 ? Math.min(100, Math.round((safeCorrect / targetCode.length) * 100)) : 0);
     participant.wpm = computedWpm;
     participant.liveWpm = computedWpm;
     participant.accuracy = computedAccuracy;
-    participant.elapsedSeconds = serverElapsedSeconds;
-    participant.rank = rank;
-    participant.completedSnippet = Boolean(completedSnippet || safeCorrect >= targetCode.length);
+    participant.elapsedSeconds = isFullyCompleted ? serverElapsedSeconds : room.config.timerSeconds;
+    participant.rank = isFullyCompleted ? rank : (participant.rank || null);
+    participant.completedSnippet = isFullyCompleted;
     participant.finishedAt = new Date();
 
     // Upsert CompetitionResult document
@@ -576,8 +627,8 @@ class RoomManager {
         username: participant.username,
         wpm: computedWpm,
         accuracy: computedAccuracy,
-        completionTimeSeconds: serverElapsedSeconds,
-        rank,
+        completionTimeSeconds: participant.elapsedSeconds,
+        rank: participant.rank || 1,
         completedSnippet: participant.completedSnippet,
         submittedAt: participant.finishedAt,
       },
@@ -595,7 +646,7 @@ class RoomManager {
       accuracy: computedAccuracy,
       correctChars: safeCorrect,
       incorrectChars: safeIncorrect,
-      elapsedSeconds: serverElapsedSeconds,
+      elapsedSeconds: participant.elapsedSeconds,
       snippetId: room.snippet.id,
       roomCode: cleanCode,
       roomId: room.id,
@@ -691,7 +742,17 @@ class RoomManager {
 
     // Idempotent upsert into CompetitionResult for all participants
     for (const p of room.participants) {
+      if (!p.wpm && p.liveWpm > 0) {
+        p.wpm = p.liveWpm;
+      }
       const isCompleted = Boolean(p.completedSnippet || p.status === 'finished');
+      if (!p.elapsedSeconds) {
+        p.elapsedSeconds = isCompleted ? 0 : room.config.timerSeconds;
+      }
+      const finalElapsed = p.elapsedSeconds || (isCompleted ? 0 : room.config.timerSeconds);
+      const finalWpm = p.wpm || p.liveWpm || 0;
+      const finalAccuracy = p.accuracy || 0;
+
       await CompetitionResult.findOneAndUpdate(
         { roomCode: cleanCode, userId: p.userId },
         {
@@ -699,9 +760,9 @@ class RoomManager {
           roomId: room.id,
           userId: p.userId,
           username: p.username,
-          wpm: p.wpm || p.liveWpm || 0,
-          accuracy: p.accuracy || 0,
-          completionTimeSeconds: p.elapsedSeconds || 0,
+          wpm: finalWpm,
+          accuracy: finalAccuracy,
+          completionTimeSeconds: finalElapsed,
           rank: p.rank || 1,
           completedSnippet: isCompleted,
           submittedAt: p.finishedAt || new Date(),

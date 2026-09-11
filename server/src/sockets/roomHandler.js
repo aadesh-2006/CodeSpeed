@@ -217,7 +217,7 @@ export function setupRoomSocket(io) {
 
     // --- Event: Live Race Progress ---
     socket.on('race:progress', (data) => {
-      const { code, progressPercent, currentPosition, liveWpm } = data || {};
+      const { code, progressPercent, currentPosition, liveWpm, accuracy, correctChars, incorrectChars } = data || {};
       if (!code) return;
 
       const roomCode = String(code).toUpperCase().trim();
@@ -227,6 +227,9 @@ export function setupRoomSocket(io) {
         progressPercent,
         currentPosition,
         liveWpm,
+        accuracy,
+        correctChars,
+        incorrectChars,
       });
 
       if (progress) {

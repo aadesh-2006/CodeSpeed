@@ -989,6 +989,76 @@ describe('Real-Time Multiplayer Competition Rooms — Milestone 1 Backend Tests'
       assert.strictEqual(speedBadge75.earned, true, '75 WPM badge should be earned from ranked');
       assert.strictEqual(speedBadge100.earned, false, '100 WPM badge should NOT be unlocked by 140 WPM competition attempt');
     });
+
+    test('Incomplete and timed-out racers maintain verified accuracy and elapsedSeconds in final results', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'javascript', difficulty: 'medium', timerSeconds: 60 },
+      });
+
+      await roomManager.joinRoom({
+        roomCode: room.roomCode,
+        user: { userId: participantUser._id, username: participantUser.username },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 60000);
+      activeRoom.raceEndsAt = new Date(Date.now());
+
+      // Host typed partially: 150 correct chars, 10 incorrect chars -> ~30 WPM, 93.8% accuracy
+      roomManager.updateProgress({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        progressPercent: 50,
+        currentPosition: 50,
+        liveWpm: 30,
+        accuracy: 93.8,
+        correctChars: 150,
+        incorrectChars: 10,
+      });
+
+      // Participant typed partially: 80 correct chars, 5 incorrect chars -> ~16 WPM, 94.1% accuracy
+      roomManager.updateProgress({
+        roomCode: room.roomCode,
+        userId: participantUser._id,
+        progressPercent: 25,
+        currentPosition: 25,
+        liveWpm: 16,
+        accuracy: 94.1,
+        correctChars: 80,
+        incorrectChars: 5,
+      });
+
+      // Mark racers timed_out and finalize room
+      for (const p of activeRoom.participants) {
+        p.status = 'timed_out';
+        p.elapsedSeconds = 60;
+      }
+      await roomManager.finalizeRoom(room.roomCode);
+
+      // Fetch results via API
+      const res = await fetch(`${baseUrl}/api/rooms/${room.roomCode}/results`, {
+        headers: { Authorization: `Bearer ${hostToken}` },
+      });
+      assert.strictEqual(res.status, 200);
+      const json = await res.json();
+      assert.strictEqual(json.data.results.length, 2);
+
+      // Host (50% progress, 30 WPM, 93.8% accuracy, 60s time)
+      assert.strictEqual(json.data.results[0].rank, 1);
+      assert.strictEqual(json.data.results[0].wpm, 30);
+      assert.strictEqual(json.data.results[0].accuracy, 93.8);
+      assert.strictEqual(json.data.results[0].completionTimeSeconds, 60);
+      assert.strictEqual(json.data.results[0].completedSnippet, false);
+
+      // Participant (25% progress, 16 WPM, 94.1% accuracy, 60s time)
+      assert.strictEqual(json.data.results[1].rank, 2);
+      assert.strictEqual(json.data.results[1].wpm, 16);
+      assert.strictEqual(json.data.results[1].accuracy, 94.1);
+      assert.strictEqual(json.data.results[1].completionTimeSeconds, 60);
+      assert.strictEqual(json.data.results[1].completedSnippet, false);
+    });
   });
 });
 

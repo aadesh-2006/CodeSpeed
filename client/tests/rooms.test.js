@@ -662,6 +662,86 @@ describe('Multiplayer Competition Rooms — Milestone 2, 3, 4 & 5 Frontend Tests
       assert.ok(html.includes('Create New Room'));
       assert.ok(html.includes('Return to Rooms Hub'));
     });
+
+    test('RoomResults safely renders incomplete and timed-out participants with valid metrics and no exceptions', () => {
+      const allIncompleteRoom = {
+        roomCode: 'TIMEOUT1',
+        hostId: 'host-1',
+        hostUsername: 'Semnótés',
+        status: 'finished',
+        config: { language: 'javascript', difficulty: 'medium', timerSeconds: 60 },
+        snippet: { id: 'js-med-1', title: 'Binary Search', language: 'javascript', code: 'let x = 1;' },
+        participants: [
+          {
+            userId: 'host-1',
+            username: 'Semnótés',
+            status: 'timed_out',
+            wpm: 27,
+            accuracy: 94.5,
+            elapsedSeconds: 60,
+            completionTimeSeconds: 60,
+            rank: 1,
+            completedSnippet: false,
+          },
+          {
+            userId: 'p-2',
+            username: 'Challenger',
+            status: 'timed_out',
+            wpm: 11,
+            accuracy: 88.0,
+            elapsedSeconds: 60,
+            completionTimeSeconds: 60,
+            rank: 2,
+            completedSnippet: false,
+          },
+        ],
+      };
+
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomResults, {
+          room: allIncompleteRoom,
+          results: allIncompleteRoom.participants,
+          currentUser: { id: 'host-1', username: 'Semnótés' },
+        })
+      );
+
+      assert.ok(html.includes('Semnótés'));
+      assert.ok(html.includes('27')); // WPM
+      assert.ok(html.includes('94.5%')); // Accuracy
+      assert.ok(html.includes('60s')); // Time
+      assert.ok(html.includes('TIMED OUT'));
+      assert.ok(html.includes('11')); // Participant WPM
+      assert.ok(html.includes('88%')); // Participant Accuracy
+    });
+
+    test('RoomResults safely handles participants with missing optional timing/accuracy fields', () => {
+      const sparseRoom = {
+        roomCode: 'SPARSE1',
+        hostId: 'host-1',
+        hostUsername: 'HostUser',
+        status: 'finished',
+        participants: [
+          {
+            userId: 'host-1',
+            username: 'HostUser',
+            status: 'incomplete',
+            rank: 1,
+          },
+        ],
+      };
+
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomResults, {
+          room: sparseRoom,
+          results: sparseRoom.participants,
+          currentUser: { id: 'host-1', username: 'HostUser' },
+        })
+      );
+
+      assert.ok(html.includes('HostUser'));
+      assert.ok(html.includes('INCOMPLETE'));
+      assert.ok(html.includes('—')); // Safe fallback for missing metrics
+    });
   });
 });
 

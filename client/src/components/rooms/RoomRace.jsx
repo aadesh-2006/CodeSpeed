@@ -87,7 +87,7 @@ export function RoomRace({
 
   // Throttled live progress broadcasting (at most once every 200ms)
   const sendThrottledProgress = useCallback(
-    (currProgress, currPos, currWpm) => {
+    (currProgress, currPos, currWpm, currAccuracy, currCorrect, currIncorrect) => {
       const now = Date.now();
       if (now - lastProgressSentRef.current >= 200 || currProgress === 100) {
         lastProgressSentRef.current = now;
@@ -95,6 +95,9 @@ export function RoomRace({
           progressPercent: currProgress,
           currentPosition: currPos,
           liveWpm: currWpm,
+          accuracy: currAccuracy,
+          correctChars: currCorrect,
+          incorrectChars: currIncorrect,
         });
       }
     },
@@ -112,6 +115,9 @@ export function RoomRace({
         progressPercent: 100,
         currentPosition: targetCode.length,
         liveWpm,
+        accuracy: liveAccuracy,
+        correctChars: liveCorrect,
+        incorrectChars: comparison.incorrectCount,
       });
 
       // Submit final result to server
@@ -126,6 +132,7 @@ export function RoomRace({
     comparison.isComplete,
     isCurrentUserFinished,
     liveCorrect,
+    liveAccuracy,
     comparison.incorrectCount,
     liveWpm,
     targetCode.length,
@@ -155,9 +162,10 @@ export function RoomRace({
     const comp = compareCharacters(targetCode, value, { language: snippetLanguage });
     const correct = comp.meaningfulCorrectCount !== undefined ? comp.meaningfulCorrectCount : comp.correctCount;
     const wpm = calculateWPM(correct, elapsedSinceStart);
+    const accuracy = calculateAccuracy(correct, correct + comp.incorrectCount);
     const pct = targetCode.length > 0 ? Math.min(100, Math.round((comp.currentPosition / targetCode.length) * 100)) : 0;
 
-    sendThrottledProgress(pct, comp.currentPosition, wpm);
+    sendThrottledProgress(pct, comp.currentPosition, wpm, accuracy, correct, comp.incorrectCount);
   };
 
   const handleKeyDown = (e) => {

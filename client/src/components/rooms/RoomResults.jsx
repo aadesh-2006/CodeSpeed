@@ -97,15 +97,27 @@ export function RoomResults({
 
             <div className="winner-metrics-grid">
               <div className="winner-metric-cell">
-                <span className="winner-metric-val">{winner.wpm || 0}</span>
+                <span className="winner-metric-val">{winner.wpm !== undefined ? winner.wpm : 0}</span>
                 <span className="winner-metric-lbl">WPM</span>
               </div>
               <div className="winner-metric-cell">
-                <span className="winner-metric-val">{winner.accuracy || 0}%</span>
+                <span className="winner-metric-val">
+                  {winner.accuracy !== undefined && winner.accuracy !== null
+                    ? `${winner.accuracy}%`
+                    : '—'}
+                </span>
                 <span className="winner-metric-lbl">ACCURACY</span>
               </div>
               <div className="winner-metric-cell">
-                <span className="winner-metric-val">{winner.completionTimeSeconds || winner.elapsedSeconds || 0}s</span>
+                <span className="winner-metric-val">
+                  {winner.completionTimeSeconds !== undefined && winner.completionTimeSeconds > 0
+                    ? `${winner.completionTimeSeconds}s`
+                    : winner.elapsedSeconds !== undefined && winner.elapsedSeconds > 0
+                    ? `${winner.elapsedSeconds}s`
+                    : winner.completedSnippet
+                    ? '0s'
+                    : '—'}
+                </span>
                 <span className="winner-metric-lbl">TIME</span>
               </div>
             </div>
@@ -141,7 +153,7 @@ export function RoomResults({
                   (currentUser?._id && (racer.userId === currentUser._id || racer.userId?.toString() === currentUser._id.toString())) ||
                   (currentUser?.username && racer.username && currentUser.username.toLowerCase() === racer.username.toLowerCase())
                 );
-                const isCompleted = racer.completedSnippet || racer.status === 'finished';
+                const isCompleted = Boolean(racer.completedSnippet || racer.status === 'finished');
                 const isTimedOut = racer.status === 'timed_out';
                 const isAbandoned = racer.status === 'abandoned';
 
@@ -190,19 +202,25 @@ export function RoomResults({
                       )}
                     </td>
                     <td className="col-speed">
-                      <span className="metric-primary-text">{racer.wpm || 0}</span>
+                      <span className="metric-primary-text">{racer.wpm !== undefined ? racer.wpm : 0}</span>
                       <span className="metric-unit-text"> WPM</span>
                     </td>
                     <td className="col-accuracy">
-                      <span className="metric-primary-text">{racer.accuracy || 0}%</span>
+                      <span className="metric-primary-text">
+                        {racer.accuracy !== undefined && racer.accuracy !== null
+                          ? `${racer.accuracy}%`
+                          : '—'}
+                      </span>
                     </td>
                     <td className="col-time">
                       <span className="metric-primary-text">
-                        {racer.completionTimeSeconds !== undefined
+                        {racer.completionTimeSeconds !== undefined && racer.completionTimeSeconds > 0
                           ? `${racer.completionTimeSeconds}s`
-                          : racer.elapsedSeconds !== undefined
+                          : racer.elapsedSeconds !== undefined && racer.elapsedSeconds > 0
                           ? `${racer.elapsedSeconds}s`
-                          : '-'}
+                          : isCompleted
+                          ? '0s'
+                          : '—'}
                       </span>
                     </td>
                   </tr>
