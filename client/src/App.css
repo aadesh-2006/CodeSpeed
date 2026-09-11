@@ -3478,18 +3478,24 @@ body {
 .room-select {
   width: 100%;
   padding: 0.65rem 0.85rem;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-surface, rgb(10, 10, 10));
   border: 1px solid var(--border-default);
   border-radius: 8px;
   color: var(--text-primary);
   font-family: inherit;
   font-size: 0.95rem;
   outline: none;
+  color-scheme: dark;
   transition: border-color 0.15s ease;
 }
 
 .room-select:focus {
   border-color: var(--accent-primary, #6366f1);
+}
+
+.room-select option {
+  background-color: rgb(10, 10, 10);
+  color: var(--text-primary, #f4f4f5);
 }
 
 .btn-group-pill {
