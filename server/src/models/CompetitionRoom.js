@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { SUPPORTED_LANGUAGES, DIFFICULTY_LEVELS, VALID_TIMERS } from './Performance.js';
 
 export const ROOM_STATUSES = ['waiting', 'countdown', 'active', 'finished', 'cancelled'];
-export const PARTICIPANT_STATUSES = ['joined', 'racing', 'finished', 'abandoned'];
+export const PARTICIPANT_STATUSES = ['joined', 'racing', 'finished', 'abandoned', 'timed_out'];
 
 const participantSchema = new mongoose.Schema(
   {

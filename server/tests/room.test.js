@@ -610,6 +610,71 @@ describe('Real-Time Multiplayer Competition Rooms — Milestone 1 Backend Tests'
       assert.strictEqual(reconnectResp.room.snippet.id, room.snippet.id);
       assert.strictEqual(reconnectResp.room.participants.length, 2);
       assert.ok(reconnectResp.room.remainingSeconds > 0 && reconnectResp.room.remainingSeconds <= 45);
+      assert.ok(reconnectResp.room.raceStartsAt);
+      assert.ok(reconnectResp.room.raceEndsAt);
+    });
+
+    test('Authoritative race expiration transitions room to finished and marks unfinished racers as timed_out', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'python', difficulty: 'easy', timerSeconds: 30 },
+      });
+
+      await roomManager.joinRoom({
+        roomCode: room.roomCode,
+        user: { userId: participantUser._id, username: participantUser.username },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 31000);
+      activeRoom.raceEndsAt = new Date(Date.now() - 1000); // 1s ago
+
+      // Participant finishes before expiration
+      activeRoom.participants[0].status = 'finished';
+      activeRoom.participants[0].wpm = 90;
+
+      // Participant 2 is still racing -> finalize room
+      await roomManager.finalizeRoom(room.roomCode);
+
+      const finishedRoom = roomManager.rooms.get(room.roomCode);
+      assert.strictEqual(finishedRoom.status, 'finished');
+      assert.strictEqual(finishedRoom.participants[0].status, 'finished');
+    });
+
+    test('Progress update includes currentPosition and rejects non-active race progress', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'c', difficulty: 'easy', timerSeconds: 30 },
+      });
+
+      // Attempt progress in waiting state -> should return null
+      const waitingProgress = roomManager.updateProgress({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        progressPercent: 20,
+        currentPosition: 15,
+        liveWpm: 50,
+      });
+      assert.strictEqual(waitingProgress, null);
+
+      // Transition to active
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+
+      const validProgress = roomManager.updateProgress({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        progressPercent: 25,
+        currentPosition: 30,
+        liveWpm: 65,
+      });
+
+      assert.ok(validProgress);
+      assert.strictEqual(validProgress.progressPercent, 25);
+      assert.strictEqual(validProgress.currentPosition, 30);
+      assert.strictEqual(validProgress.liveWpm, 65);
     });
   });
 });
+

@@ -446,10 +446,16 @@ class RoomManager {
       }
     }, 3000);
 
-    // Schedule authoritative race expiration timeout (race duration + 5s grace)
-    const expirationMs = 3000 + room.config.timerSeconds * 1000 + 5000;
+    // Schedule authoritative race expiration timeout (3s countdown + timer duration)
+    const expirationMs = 3000 + room.config.timerSeconds * 1000;
     room.timers.raceExpiration = setTimeout(async () => {
       if (room.status === 'active' || room.status === 'countdown') {
+        // Mark any unfinished racers as timed_out
+        for (const p of room.participants) {
+          if (p.status === 'racing' || p.status === 'joined') {
+            p.status = 'timed_out';
+          }
+        }
         await this.finalizeRoom(cleanCode, onFinished);
       }
     }, expirationMs);
@@ -460,21 +466,30 @@ class RoomManager {
   /**
    * Update participant live progress (throttled).
    */
-  updateProgress({ roomCode, userId, progressPercent, liveWpm }) {
+  updateProgress({ roomCode, userId, progressPercent, currentPosition, liveWpm }) {
     const cleanCode = (roomCode || '').toUpperCase().trim();
     const room = this.rooms.get(cleanCode);
     if (!room || room.status !== 'active') return null;
 
+    // Enforce race expiration
+    if (room.raceEndsAt && Date.now() > new Date(room.raceEndsAt).getTime()) {
+      return null;
+    }
+
     const participant = room.participants.find((p) => p.userId.toString() === userId.toString());
-    if (!participant || participant.status === 'finished') return null;
+    if (!participant || participant.status === 'finished' || participant.status === 'timed_out' || participant.status === 'abandoned') {
+      return null;
+    }
 
     participant.progressPercent = Math.min(100, Math.max(0, Number(progressPercent) || 0));
+    participant.currentPosition = Math.max(0, Number(currentPosition) || 0);
     participant.liveWpm = Math.max(0, Number(liveWpm) || 0);
 
     return {
       userId: participant.userId.toString(),
       username: participant.username,
       progressPercent: participant.progressPercent,
+      currentPosition: participant.currentPosition,
       liveWpm: participant.liveWpm,
     };
   }
@@ -689,8 +704,9 @@ class RoomManager {
         username: p.username,
         profilePhoto: p.profilePhoto,
         status: p.status,
-        progressPercent: p.progressPercent,
-        liveWpm: p.liveWpm,
+        progressPercent: p.progressPercent || 0,
+        currentPosition: p.currentPosition || 0,
+        liveWpm: p.liveWpm || 0,
         wpm: p.wpm,
         accuracy: p.accuracy,
         elapsedSeconds: p.elapsedSeconds,
@@ -735,6 +751,7 @@ class RoomManager {
         joinedAt: p.joinedAt,
         status: p.status,
         progressPercent: p.progressPercent || 0,
+        currentPosition: p.currentPosition || 0,
         liveWpm: p.liveWpm || 0,
         wpm: p.wpm || 0,
         accuracy: p.accuracy || 0,

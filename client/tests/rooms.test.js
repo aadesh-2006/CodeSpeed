@@ -4,11 +4,12 @@ import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import { createServer } from 'vite';
 
-describe('Multiplayer Competition Rooms — Milestone 2 & 3 Frontend Tests', () => {
+describe('Multiplayer Competition Rooms — Milestone 2, 3 & 4 Frontend Tests', () => {
   let viteServer;
   let RoomsHub;
   let RoomView;
   let RoomLobby;
+  let RoomRace;
   let socketService;
   let api;
 
@@ -26,6 +27,9 @@ describe('Multiplayer Competition Rooms — Milestone 2 & 3 Frontend Tests', () 
 
     const roomLobbyModule = await viteServer.ssrLoadModule('./src/components/rooms/RoomLobby.jsx');
     RoomLobby = roomLobbyModule.RoomLobby || roomLobbyModule.default;
+
+    const roomRaceModule = await viteServer.ssrLoadModule('./src/components/rooms/RoomRace.jsx');
+    RoomRace = roomRaceModule.RoomRace || roomRaceModule.default;
 
     const socketModule = await viteServer.ssrLoadModule('./src/services/socket.js');
     socketService = socketModule.default || socketModule;
@@ -291,7 +295,146 @@ describe('Multiplayer Competition Rooms — Milestone 2 & 3 Frontend Tests', () 
     });
   });
 
-  describe('3. RoomView Container Component', () => {
+  describe('3. RoomRace Component Rendering & Live Track', () => {
+    const raceRoom = {
+      roomCode: 'RACE77',
+      hostId: 'host-1',
+      hostUsername: 'SpeedMaster',
+      status: 'active',
+      config: {
+        language: 'javascript',
+        difficulty: 'medium',
+        timerSeconds: 60,
+      },
+      snippet: {
+        id: 'js-med-1',
+        title: 'Binary Search',
+        language: 'javascript',
+        difficulty: 'medium',
+        code: 'function binarySearch(arr, target) {\n  let left = 0;\n  return -1;\n}',
+      },
+      countdownStartsAt: new Date(Date.now() - 4000),
+      raceStartsAt: new Date(Date.now() - 1000),
+      raceEndsAt: new Date(Date.now() + 59000),
+      participants: [
+        {
+          userId: 'host-1',
+          username: 'SpeedMaster',
+          profilePhoto: null,
+          status: 'racing',
+          progressPercent: 45,
+          liveWpm: 72,
+        },
+        {
+          userId: 'racer-2',
+          username: 'QuickCoder',
+          profilePhoto: null,
+          status: 'finished',
+          progressPercent: 100,
+          wpm: 88,
+          accuracy: 99.5,
+          elapsedSeconds: 24,
+          completedSnippet: true,
+        },
+      ],
+    };
+
+    test('RoomRace renders race header with room code, language, and timer', () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomRace, {
+          room: raceRoom,
+          currentUser: { id: 'host-1', username: 'SpeedMaster' },
+        })
+      );
+
+      assert.ok(html.includes('ROOM: RACE77'));
+      assert.ok(html.includes('JAVASCRIPT'));
+      assert.ok(html.includes('MEDIUM'));
+      assert.ok(html.includes('LIVE COMPETITION TRACK'));
+      assert.ok(html.includes('2 Racers'));
+    });
+
+    test('RoomRace renders competitor progress tracks with live stats and finished badges', () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomRace, {
+          room: raceRoom,
+          currentUser: { id: 'host-1', username: 'SpeedMaster' },
+        })
+      );
+
+      assert.ok(html.includes('SpeedMaster'));
+      assert.ok(html.includes('QuickCoder'));
+      assert.ok(html.includes('COMPLETED'));
+      assert.ok(html.includes('badge-participant-host'));
+      assert.ok(html.includes('badge-participant-you'));
+    });
+
+    test('RoomRace renders code snippet and live metrics bar', () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomRace, {
+          room: raceRoom,
+          currentUser: { id: 'host-1', username: 'SpeedMaster' },
+        })
+      );
+
+      assert.ok(html.includes('editor-code'));
+      assert.ok(html.includes('char-node'));
+      assert.ok(html.includes('SPEED'));
+      assert.ok(html.includes('ACCURACY'));
+      assert.ok(html.includes('PROGRESS'));
+      assert.ok(html.includes('TIME LEFT'));
+    });
+
+    test('RoomRace renders countdown overlay when now < raceStartsAt', () => {
+      const countdownRoom = {
+        ...raceRoom,
+        status: 'countdown',
+        raceStartsAt: new Date(Date.now() + 2500), // 2.5s in future
+        raceEndsAt: new Date(Date.now() + 62500),
+      };
+
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomRace, {
+          room: countdownRoom,
+          currentUser: { id: 'host-1', username: 'SpeedMaster' },
+        })
+      );
+
+      assert.ok(html.includes('countdown-overlay-modal'));
+      assert.ok(html.includes('GET READY TO RACE'));
+    });
+
+    test('RoomRace renders finished notice bar when current user is finished', () => {
+      const finishedUserRoom = {
+        ...raceRoom,
+        participants: [
+          {
+            userId: 'host-1',
+            username: 'SpeedMaster',
+            profilePhoto: null,
+            status: 'finished',
+            progressPercent: 100,
+            wpm: 95,
+            accuracy: 100,
+            elapsedSeconds: 20,
+            completedSnippet: true,
+          },
+        ],
+      };
+
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomRace, {
+          room: finishedUserRoom,
+          currentUser: { id: 'host-1', username: 'SpeedMaster' },
+        })
+      );
+
+      assert.ok(html.includes('finished-notice-bar'));
+      assert.ok(html.includes('Snippet Complete!'));
+    });
+  });
+
+  describe('4. RoomView Container Component', () => {
     test('RoomView renders loading state initially with roomCode', () => {
       const html = ReactDOMServer.renderToStaticMarkup(
         React.createElement(RoomView, { roomCode: 'ABC123' })
@@ -310,7 +453,7 @@ describe('Multiplayer Competition Rooms — Milestone 2 & 3 Frontend Tests', () 
     });
   });
 
-  describe('4. Socket.IO Client Service Architecture', () => {
+  describe('5. Socket.IO Client Service Architecture', () => {
     test('connectSocket returns null when unauthenticated without active token', () => {
       const socket = socketService.connectSocket();
       assert.strictEqual(socket, null);
@@ -323,7 +466,7 @@ describe('Multiplayer Competition Rooms — Milestone 2 & 3 Frontend Tests', () 
     });
   });
 
-  describe('5. API Client Room Methods Extension', () => {
+  describe('6. API Client Room Methods Extension', () => {
     test('api service exposes createRoom, getRoom, and getRoomResults methods', () => {
       assert.strictEqual(typeof api.createRoom, 'function');
       assert.strictEqual(typeof api.getRoom, 'function');
@@ -331,4 +474,5 @@ describe('Multiplayer Competition Rooms — Milestone 2 & 3 Frontend Tests', () 
     });
   });
 });
+
 

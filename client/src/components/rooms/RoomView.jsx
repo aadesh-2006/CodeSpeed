@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../../services/api';
 import socketService from '../../services/socket';
 import RoomLobby from './RoomLobby';
+import RoomRace from './RoomRace';
 
 export function RoomView({ roomCode, currentUser, onNavigateBack }) {
   const [room, setRoom] = useState(null);
@@ -124,6 +125,53 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
       });
     };
 
+    const handleProgressUpdate = (data) => {
+      if (!isMounted || !data?.userId) return;
+      setRoom((prev) => {
+        if (!prev || !prev.participants) return prev;
+        const updatedParticipants = prev.participants.map((p) => {
+          if (p.userId === data.userId || p.userId.toString() === data.userId.toString()) {
+            return {
+              ...p,
+              progressPercent: data.progressPercent !== undefined ? data.progressPercent : p.progressPercent,
+              currentPosition: data.currentPosition !== undefined ? data.currentPosition : p.currentPosition,
+              liveWpm: data.liveWpm !== undefined ? data.liveWpm : p.liveWpm,
+            };
+          }
+          return p;
+        });
+        return {
+          ...prev,
+          participants: updatedParticipants,
+        };
+      });
+    };
+
+    const handleUserFinished = (data) => {
+      if (!isMounted || !data?.userId) return;
+      setRoom((prev) => {
+        if (!prev || !prev.participants) return prev;
+        const updatedParticipants = prev.participants.map((p) => {
+          if (p.userId === data.userId || p.userId.toString() === data.userId.toString()) {
+            return {
+              ...p,
+              status: 'finished',
+              progressPercent: 100,
+              wpm: data.wpm !== undefined ? data.wpm : p.wpm,
+              accuracy: data.accuracy !== undefined ? data.accuracy : p.accuracy,
+              elapsedSeconds: data.elapsedSeconds !== undefined ? data.elapsedSeconds : p.elapsedSeconds,
+              completedSnippet: data.completedSnippet !== undefined ? data.completedSnippet : true,
+            };
+          }
+          return p;
+        });
+        return {
+          ...prev,
+          participants: updatedParticipants,
+        };
+      });
+    };
+
     const handleFinished = (data) => {
       if (!isMounted) return;
       setRoom((prev) => {
@@ -161,6 +209,8 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
       socket.on('room:config_updated', handleConfigUpdated);
       socket.on('room:countdown', handleCountdown);
       socket.on('room:race_started', handleRaceStarted);
+      socket.on('race:progress_update', handleProgressUpdate);
+      socket.on('race:user_finished', handleUserFinished);
       socket.on('room:finished', handleFinished);
       socket.on('room:cancelled', handleCancelled);
       socket.on('room:error', handleRoomError);
@@ -186,6 +236,8 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
         socket.off('room:config_updated', handleConfigUpdated);
         socket.off('room:countdown', handleCountdown);
         socket.off('room:race_started', handleRaceStarted);
+        socket.off('race:progress_update', handleProgressUpdate);
+        socket.off('race:user_finished', handleUserFinished);
         socket.off('room:finished', handleFinished);
         socket.off('room:cancelled', handleCancelled);
         socket.off('room:error', handleRoomError);
@@ -221,6 +273,34 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
     });
   }, [cleanCode]);
 
+  const handleProgress = useCallback(
+    (progressData) => {
+      const socket = socketService.getSocket();
+      if (!socket || !cleanCode) return;
+      socket.emit('race:progress', {
+        code: cleanCode,
+        ...progressData,
+      });
+    },
+    [cleanCode]
+  );
+
+  const handleSubmit = useCallback(
+    (submissionData) => {
+      const socket = socketService.getSocket();
+      if (!socket || !cleanCode) return;
+      socket.emit('race:submit', {
+        code: cleanCode,
+        ...submissionData,
+      }, (resp) => {
+        if (resp?.error) {
+          setError(resp.error);
+        }
+      });
+    },
+    [cleanCode]
+  );
+
   const handleLeaveRoom = useCallback(() => {
     const socket = socketService.getSocket();
     if (socket && cleanCode) {
@@ -255,6 +335,20 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
     );
   }
 
+  // Render RoomRace when countdown, active, or finished
+  if (room?.status === 'countdown' || room?.status === 'active' || room?.status === 'finished') {
+    return (
+      <RoomRace
+        room={room}
+        currentUser={currentUser}
+        onProgress={handleProgress}
+        onSubmit={handleSubmit}
+        onLeaveRoom={handleLeaveRoom}
+        error={error}
+      />
+    );
+  }
+
   return (
     <RoomLobby
       room={room}
@@ -269,3 +363,4 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
 }
 
 export default RoomView;
+
