@@ -217,7 +217,7 @@ export function setupRoomSocket(io) {
 
     // --- Event: Live Race Progress ---
     socket.on('race:progress', (data) => {
-      const { code, progressPercent, currentPosition, liveWpm, accuracy, correctChars, incorrectChars } = data || {};
+      const { code, progressPercent, currentPosition, liveWpm, accuracy, correctChars, incorrectChars, typedCode } = data || {};
       if (!code) return;
 
       const roomCode = String(code).toUpperCase().trim();
@@ -230,6 +230,7 @@ export function setupRoomSocket(io) {
         accuracy,
         correctChars,
         incorrectChars,
+        typedCode,
       });
 
       if (progress) {
@@ -240,7 +241,7 @@ export function setupRoomSocket(io) {
     // --- Event: Submit Result ---
     socket.on('race:submit', async (data, callback) => {
       try {
-        const { code, correctChars, incorrectChars, completedSnippet } = data || {};
+        const { code, correctChars, incorrectChars, completedSnippet, typedCode } = data || {};
         if (!code) return;
 
         const roomCode = String(code).toUpperCase().trim();
@@ -248,7 +249,7 @@ export function setupRoomSocket(io) {
         const result = await roomManager.submitResult({
           roomCode,
           userId: user.id,
-          submission: { correctChars, incorrectChars, completedSnippet },
+          submission: { correctChars, incorrectChars, completedSnippet, typedCode },
           onFinished: (finishedRoom) => {
             io.to(`room:${roomCode}`).emit('room:finished', {
               room: finishedRoom,

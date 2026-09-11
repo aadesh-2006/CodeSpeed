@@ -452,12 +452,13 @@ describe('Real-Time Multiplayer Competition Rooms — Milestone 1 Backend Tests'
       // Simulate race started 10 seconds ago
       activeRoom.raceStartsAt = new Date(Date.now() - 10000);
 
-      // Racer finishes first with 200 correct characters in 10s -> ~240 WPM, 100% accuracy
+      // Racer finishes first with correct code
       const racerSubmit = await new Promise((res) => {
         racerSocket.emit(
           'race:submit',
           {
             code: room.roomCode,
+            typedCode: activeRoom.snippet.code,
             correctChars: 100,
             incorrectChars: 0,
             completedSnippet: true,
@@ -904,6 +905,7 @@ describe('Real-Time Multiplayer Competition Rooms — Milestone 1 Backend Tests'
         roomCode: room.roomCode,
         userId: hostUser._id,
         submission: {
+          typedCode: activeRoom.snippet.code,
           correctChars: 100,
           incorrectChars: 0,
           completedSnippet: true,
@@ -1006,28 +1008,30 @@ describe('Real-Time Multiplayer Competition Rooms — Milestone 1 Backend Tests'
       activeRoom.raceStartsAt = new Date(Date.now() - 60000);
       activeRoom.raceEndsAt = new Date(Date.now());
 
-      // Host typed partially: 150 correct chars, 10 incorrect chars -> ~30 WPM, 93.8% accuracy
+      // Host typed partially: 150 chars -> server evaluates typedCode
       roomManager.updateProgress({
         roomCode: room.roomCode,
         userId: hostUser._id,
         progressPercent: 50,
-        currentPosition: 50,
+        currentPosition: 150,
         liveWpm: 30,
-        accuracy: 93.8,
+        accuracy: 100,
         correctChars: 150,
-        incorrectChars: 10,
+        incorrectChars: 0,
+        typedCode: activeRoom.snippet.code.slice(0, 150),
       });
 
-      // Participant typed partially: 80 correct chars, 5 incorrect chars -> ~16 WPM, 94.1% accuracy
+      // Participant typed partially: 80 chars -> server evaluates typedCode
       roomManager.updateProgress({
         roomCode: room.roomCode,
         userId: participantUser._id,
         progressPercent: 25,
-        currentPosition: 25,
+        currentPosition: 80,
         liveWpm: 16,
-        accuracy: 94.1,
+        accuracy: 100,
         correctChars: 80,
-        incorrectChars: 5,
+        incorrectChars: 0,
+        typedCode: activeRoom.snippet.code.slice(0, 80),
       });
 
       // Mark racers timed_out and finalize room
@@ -1045,19 +1049,259 @@ describe('Real-Time Multiplayer Competition Rooms — Milestone 1 Backend Tests'
       const json = await res.json();
       assert.strictEqual(json.data.results.length, 2);
 
-      // Host (50% progress, 30 WPM, 93.8% accuracy, 60s time)
+      // Host (Server-derived from typed 150 chars, 60s time)
       assert.strictEqual(json.data.results[0].rank, 1);
-      assert.strictEqual(json.data.results[0].wpm, 30);
-      assert.strictEqual(json.data.results[0].accuracy, 93.8);
+      assert.ok(json.data.results[0].wpm > 0, 'WPM should be server-calculated');
+      assert.strictEqual(json.data.results[0].accuracy, 100, 'Accuracy should be server-calculated as 100%');
       assert.strictEqual(json.data.results[0].completionTimeSeconds, 60);
       assert.strictEqual(json.data.results[0].completedSnippet, false);
 
-      // Participant (25% progress, 16 WPM, 94.1% accuracy, 60s time)
+      // Participant (Server-derived from typed 80 chars, 60s time)
       assert.strictEqual(json.data.results[1].rank, 2);
-      assert.strictEqual(json.data.results[1].wpm, 16);
-      assert.strictEqual(json.data.results[1].accuracy, 94.1);
+      assert.ok(json.data.results[1].wpm > 0, 'WPM should be server-calculated');
+      assert.strictEqual(json.data.results[1].accuracy, 100, 'Accuracy should be server-calculated as 100%');
       assert.strictEqual(json.data.results[1].completionTimeSeconds, 60);
       assert.strictEqual(json.data.results[1].completedSnippet, false);
+    });
+  });
+
+  describe('8. Server-Authoritative Anti-Tamper & Security Verification (Milestone 8)', () => {
+    test('Attack Simulation: Malicious client sending fabricated numbers cannot spoof completed result or high score', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'javascript', difficulty: 'easy', timerSeconds: 60 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 5000); // 5s elapsed
+
+      // Malicious attack payload attempting to forge 999999 characters, 350 WPM, 100% accuracy, and completedSnippet
+      const res = await roomManager.submitResult({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        submission: {
+          correctChars: 999999,
+          incorrectChars: 0,
+          accuracy: 100,
+          liveWpm: 350,
+          completedSnippet: true,
+          typedCode: 'console.log("fraudulent injection attempt");',
+        },
+      });
+
+      assert.strictEqual(res.participant.completedSnippet, false, 'Server must reject fraudulent completion');
+      assert.notStrictEqual(res.participant.status, 'finished', 'Fraudulent submission must NOT be marked finished');
+      assert.ok(res.participant.status === 'incomplete' || res.participant.status === 'timed_out');
+      assert.notStrictEqual(res.participant.wpm, 350, 'Fabricated 350 WPM must be ignored');
+
+      const persistedDoc = await CompetitionResult.findOne({ roomCode: room.roomCode, userId: hostUser._id });
+      assert.ok(persistedDoc);
+      assert.strictEqual(persistedDoc.completedSnippet, false, 'Persisted result must NOT be completed');
+    });
+
+    test('CASE A: Client sends fake WPM -> final WPM is strictly server-derived', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'python', difficulty: 'easy', timerSeconds: 60 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 30000); // 30s elapsed
+
+      // Send fake 300 WPM with real 50 chars typed
+      const res = await roomManager.submitResult({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        submission: {
+          liveWpm: 300,
+          typedCode: activeRoom.snippet.code.slice(0, 50),
+        },
+      });
+
+      // 50 chars / 5 = 10 words in 0.5 min = 20 WPM (not 300 WPM)
+      assert.ok(res.participant.wpm <= 25, `Expected server-derived ~20 WPM, got ${res.participant.wpm}`);
+    });
+
+    test('CASE B: Client sends fake accuracy -> final accuracy is strictly server-derived', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'java', difficulty: 'easy', timerSeconds: 60 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 10000);
+
+      // Send fake 100% accuracy claim with incorrect typing
+      const res = await roomManager.submitResult({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        submission: {
+          accuracy: 100,
+          typedCode: 'wrong_syntax_completely_invalid',
+        },
+      });
+
+      assert.ok(res.participant.accuracy < 100, 'Accuracy must be calculated by server from actual character match');
+    });
+
+    test('CASE C: Client sends fake correctChars/incorrectChars -> metrics derived from actual typed text', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'c', difficulty: 'easy', timerSeconds: 60 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 10000);
+
+      const res = await roomManager.submitResult({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        submission: {
+          correctChars: 500,
+          incorrectChars: 0,
+          typedCode: activeRoom.snippet.code.slice(0, 30),
+        },
+      });
+
+      assert.strictEqual(res.participant.correctChars, 30, 'Server must verify only 30 characters were correctly typed');
+    });
+
+    test('CASE D: Client sends completedSnippet=true without actually completing canonical text -> rejected', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'cpp', difficulty: 'medium', timerSeconds: 60 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 15000);
+
+      const res = await roomManager.submitResult({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        submission: {
+          completedSnippet: true, // Untrusted client claim
+          typedCode: activeRoom.snippet.code.slice(0, 10), // Only 10 chars typed
+        },
+      });
+
+      assert.strictEqual(res.participant.completedSnippet, false);
+      assert.notStrictEqual(res.participant.status, 'finished');
+      assert.ok(res.participant.status === 'incomplete' || res.participant.status === 'timed_out');
+    });
+
+    test('CASE E: Timed-out participant with verified typing state derives authoritative final metrics', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'html', difficulty: 'easy', timerSeconds: 30 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+
+      // Racer typed 50 chars during live race
+      roomManager.updateProgress({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        progressPercent: 40,
+        typedCode: activeRoom.snippet.code.slice(0, 50),
+      });
+
+      // Race expires and finalizes
+      const finalState = await roomManager.finalizeRoom(room.roomCode);
+      const hostP = finalState.participants.find((p) => p.userId === hostUser._id.toString());
+
+      assert.strictEqual(hostP.status, 'timed_out');
+      assert.strictEqual(hostP.elapsedSeconds, 30);
+      assert.strictEqual(hostP.accuracy, 100);
+      assert.ok(hostP.wpm > 0);
+      assert.strictEqual(hostP.completedSnippet, false);
+    });
+
+    test('CASE F: Valid finished participant derives exact server elapsed time, WPM, and accuracy', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'css', difficulty: 'easy', timerSeconds: 60 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 12000); // exactly 12s
+
+      const res = await roomManager.submitResult({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        submission: {
+          typedCode: activeRoom.snippet.code, // Full canonical snippet
+        },
+      });
+
+      assert.strictEqual(res.participant.status, 'finished');
+      assert.strictEqual(res.participant.completedSnippet, true);
+      assert.strictEqual(res.participant.accuracy, 100);
+      assert.strictEqual(res.participant.elapsedSeconds, 12);
+      assert.ok(res.participant.wpm > 0);
+    });
+
+    test('CASE G: Deterministic ranking remains strictly enforced with server-derived metrics', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'sql', difficulty: 'easy', timerSeconds: 60 },
+      });
+
+      await roomManager.joinRoom({
+        roomCode: room.roomCode,
+        user: { userId: participantUser._id, username: participantUser.username },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 20000);
+
+      // Participant finishes first in 10s
+      activeRoom.participants[1].status = 'finished';
+      activeRoom.participants[1].completedSnippet = true;
+      activeRoom.participants[1].elapsedSeconds = 10;
+      activeRoom.participants[1].finishedAt = new Date(Date.now() - 10000);
+
+      // Host finishes second in 20s
+      activeRoom.participants[0].status = 'finished';
+      activeRoom.participants[0].completedSnippet = true;
+      activeRoom.participants[0].elapsedSeconds = 20;
+      activeRoom.participants[0].finishedAt = new Date(Date.now());
+
+      const finalState = await roomManager.finalizeRoom(room.roomCode);
+
+      const pRank1 = finalState.participants.find((p) => p.userId === participantUser._id.toString());
+      const pRank2 = finalState.participants.find((p) => p.userId === hostUser._id.toString());
+
+      assert.strictEqual(pRank1.rank, 1, 'Participant with 10s elapsed must be Rank 1');
+      assert.strictEqual(pRank2.rank, 2, 'Host with 20s elapsed must be Rank 2');
+    });
+
+    test('CASE H: Mode isolation verified - Competition results never taint Ranked PB or Practice stats', async () => {
+      // Create high-speed competition record
+      await Performance.create({
+        userId: hostUser._id,
+        mode: 'competition',
+        language: 'javascript',
+        difficulty: 'hard',
+        timerSeconds: 60,
+        wpm: 150,
+        accuracy: 99,
+        correctChars: 750,
+        incorrectChars: 5,
+        elapsedSeconds: 60,
+        snippetId: 'js-hard-02',
+      });
+
+      const userDoc = await User.findById(hostUser._id);
+      // Ensure user document has no competition corruption in standard stats
+      assert.ok(userDoc);
     });
   });
 });

@@ -87,7 +87,7 @@ export function RoomRace({
 
   // Throttled live progress broadcasting (at most once every 200ms)
   const sendThrottledProgress = useCallback(
-    (currProgress, currPos, currWpm, currAccuracy, currCorrect, currIncorrect) => {
+    (currProgress, currPos, currWpm, currAccuracy, currCorrect, currIncorrect, currTypedCode) => {
       const now = Date.now();
       if (now - lastProgressSentRef.current >= 200 || currProgress === 100) {
         lastProgressSentRef.current = now;
@@ -98,6 +98,7 @@ export function RoomRace({
           accuracy: currAccuracy,
           correctChars: currCorrect,
           incorrectChars: currIncorrect,
+          typedCode: currTypedCode,
         });
       }
     },
@@ -118,10 +119,12 @@ export function RoomRace({
         accuracy: liveAccuracy,
         correctChars: liveCorrect,
         incorrectChars: comparison.incorrectCount,
+        typedCode,
       });
 
       // Submit final result to server
       onSubmit?.({
+        typedCode,
         correctChars: liveCorrect,
         incorrectChars: comparison.incorrectCount,
         completedSnippet: true,
@@ -136,6 +139,7 @@ export function RoomRace({
     comparison.incorrectCount,
     liveWpm,
     targetCode.length,
+    typedCode,
     onProgress,
     onSubmit,
   ]);
@@ -147,12 +151,13 @@ export function RoomRace({
       setIsFinished(true);
 
       onSubmit?.({
+        typedCode,
         correctChars: liveCorrect,
         incorrectChars: comparison.incorrectCount,
         completedSnippet: false,
       });
     }
-  }, [isRaceExpired, isCurrentUserFinished, liveCorrect, comparison.incorrectCount, onSubmit]);
+  }, [isRaceExpired, isCurrentUserFinished, liveCorrect, comparison.incorrectCount, typedCode, onSubmit]);
 
   const handleInputChange = (e) => {
     if (!isRaceActive || isCurrentUserFinished) return;
@@ -165,7 +170,7 @@ export function RoomRace({
     const accuracy = calculateAccuracy(correct, correct + comp.incorrectCount);
     const pct = targetCode.length > 0 ? Math.min(100, Math.round((comp.currentPosition / targetCode.length) * 100)) : 0;
 
-    sendThrottledProgress(pct, comp.currentPosition, wpm, accuracy, correct, comp.incorrectCount);
+    sendThrottledProgress(pct, comp.currentPosition, wpm, accuracy, correct, comp.incorrectCount, value);
   };
 
   const handleKeyDown = (e) => {
