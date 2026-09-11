@@ -15,7 +15,7 @@ export const DIFFICULTY_LEVELS = ['easy', 'medium', 'hard'];
 
 export const VALID_TIMERS = [30, 60, 120, 180, 240, 300, 600];
 
-export const PERFORMANCE_MODES = ['practice', 'ranked'];
+export const PERFORMANCE_MODES = ['practice', 'ranked', 'competition'];
 
 const performanceSchema = new mongoose.Schema(
   {
@@ -95,6 +95,17 @@ const performanceSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Snippet ID is required'],
       trim: true,
+    },
+    roomCode: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    roomId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'CompetitionRoom',
+      default: null,
     },
     createdAt: {
       type: Date,

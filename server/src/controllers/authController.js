@@ -593,19 +593,21 @@ export const getPublicProfile = async (req, res) => {
     // 3. Daily Streak Data (Always Public, calculated using profile owner's timezone)
     const allSessionDocs = await Performance.find(
       { userId: user._id },
-      { createdAt: 1 }
+      { createdAt: 1, mode: 1 }
     ).sort({ createdAt: 1 });
 
     const allTimestamps = allSessionDocs.map((p) => p.createdAt);
     const ownerTimezone = user.timezone || 'UTC';
     const streakMetrics = calculateDailyStreak(allTimestamps, { timeZone: ownerTimezone });
 
-    // For public visitor when practice stats are private, filter heatmap dailyActivity to only ranked tests
+    // For public visitor when practice stats are private, filter heatmap dailyActivity to only ranked + competition tests
     let publicDailyActivity = streakMetrics.dailyActivity;
     if (!isOwner && user.practiceStatsVisibility !== 'public') {
-      const rankedTimestamps = rankedDocs.map((p) => p.createdAt);
-      const rankedStreak = calculateDailyStreak(rankedTimestamps, { timeZone: ownerTimezone });
-      publicDailyActivity = rankedStreak.dailyActivity;
+      const publicTimestamps = allSessionDocs
+        .filter((p) => p.mode === 'ranked' || p.mode === 'competition')
+        .map((p) => p.createdAt);
+      const publicStreak = calculateDailyStreak(publicTimestamps, { timeZone: ownerTimezone });
+      publicDailyActivity = publicStreak.dailyActivity;
     }
 
     const publicStreak = {
@@ -748,12 +750,13 @@ export const getUserDailyActivity = async (req, res) => {
 
     // Privacy enforcement:
     // Ranked is always public.
+    // Competition is always public.
     // Practice is allowed if isOwner OR practiceStatsVisibility === 'public'.
     const canViewPractice = isOwner || user.practiceStatsVisibility === 'public';
 
     let modeQuery = {};
     if (!canViewPractice) {
-      modeQuery = { mode: 'ranked' };
+      modeQuery = { mode: { $in: ['ranked', 'competition'] } };
     }
 
     // Broad date range (+/- 2 days UTC) to capture any timezone shift
@@ -790,11 +793,13 @@ export const getUserDailyActivity = async (req, res) => {
       incorrectChars: doc.incorrectChars,
       elapsedSeconds: doc.elapsedSeconds,
       snippetId: doc.snippetId,
+      roomCode: doc.roomCode || null,
       createdAt: doc.createdAt,
     }));
 
     const rankedCount = tests.filter((t) => t.mode === 'ranked').length;
     const practiceCount = tests.filter((t) => t.mode === 'practice').length;
+    const competitionCount = tests.filter((t) => t.mode === 'competition').length;
 
     return res.status(200).json({
       status: 'success',
@@ -807,6 +812,7 @@ export const getUserDailyActivity = async (req, res) => {
         totalTests: tests.length,
         rankedCount,
         practiceCount,
+        competitionCount,
         tests,
       },
     });
