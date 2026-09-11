@@ -138,6 +138,10 @@ export function DailyActivity({ username, date, onNavigateBack, onNavigateHome }
                   <span className="quick-stat-label">Practice:</span>
                   <span className="quick-stat-val text-blue">{data.practiceCount || 0}</span>
                 </div>
+                <div className="quick-stat-pill">
+                  <span className="quick-stat-label">Competition:</span>
+                  <span className="quick-stat-val text-indigo">{data.competitionCount || 0}</span>
+                </div>
               </div>
             )}
           </div>
@@ -169,13 +173,18 @@ export function DailyActivity({ username, date, onNavigateBack, onNavigateHome }
                   </thead>
                   <tbody>
                     {tests.map((test, index) => {
-                      const isRanked = test.mode === 'ranked';
+                      const modeConfig = test.mode === 'ranked'
+                        ? { label: 'Ranked', badgeClass: 'badge-ranked', rowClass: 'row-ranked', speedClass: 'text-amber' }
+                        : test.mode === 'competition'
+                        ? { label: 'Competition', badgeClass: 'badge-competition', rowClass: 'row-competition', speedClass: 'text-indigo' }
+                        : { label: 'Practice', badgeClass: 'badge-practice', rowClass: 'row-practice', speedClass: 'text-primary' };
+
                       return (
-                        <tr key={test.id || index} className={`activity-attempt-row ${isRanked ? 'row-ranked' : 'row-practice'}`}>
+                        <tr key={test.id || index} className={`activity-attempt-row ${modeConfig.rowClass}`}>
                           <td className="col-num">{tests.length - index}</td>
                           <td className="col-mode">
-                            <span className={`badge-mode ${isRanked ? 'badge-ranked' : 'badge-practice'}`}>
-                              {isRanked ? 'Ranked' : 'Practice'}
+                            <span className={`badge-mode ${modeConfig.badgeClass}`}>
+                              {modeConfig.label}
                             </span>
                           </td>
                           <td className="col-lang">
@@ -188,7 +197,7 @@ export function DailyActivity({ username, date, onNavigateBack, onNavigateHome }
                           </td>
                           <td className="col-timer">{test.timerSeconds}s</td>
                           <td className="col-wpm">
-                            <span className={`wpm-mono ${isRanked ? 'text-amber' : 'text-primary'}`}>
+                            <span className={`wpm-mono ${modeConfig.speedClass}`}>
                               {test.wpm}
                             </span>
                             <span className="wpm-unit"> WPM</span>

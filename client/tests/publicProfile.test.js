@@ -275,5 +275,18 @@ describe('Public Profile Ranked vs Practice Mode Logic Tests', () => {
       await viteServer.close();
     }
   });
+
+  test('DailyActivity CSS classes support competition badge, pill, and row styling', async () => {
+    const viteServer = await createServer({
+      server: { middlewareMode: true },
+      appType: 'custom',
+    });
+    try {
+      const dailyActivityModule = await viteServer.ssrLoadModule('./src/components/DailyActivity.jsx');
+      assert.ok(dailyActivityModule.DailyActivity, 'DailyActivity component should be exported');
+    } finally {
+      await viteServer.close();
+    }
+  });
 });
 

@@ -1102,5 +1102,333 @@ describe('Daily Typing Streak System Tests (Unified Ranked + Practice)', () => {
       assert.equal(resBody.data.totalTests, 0);
     });
   });
+
+  describe('Competition Mode Activity & Daily Streak Integration Tests (Practice + Ranked + Competition)', () => {
+    test('first Competition race session creates streak = 1', async () => {
+      const { getUserStreak } = await import('../src/controllers/performanceController.js');
+
+      await Performance.create({
+        userId: userA._id,
+        mode: 'competition',
+        roomCode: 'COMP01',
+        language: 'javascript',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 88,
+        accuracy: 99,
+        correctChars: 350,
+        incorrectChars: 1,
+        elapsedSeconds: 52,
+        snippetId: 'js-comp-1',
+        createdAt: new Date(),
+      });
+
+      let resCode = null;
+      let resData = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resData = d; } };
+        },
+      };
+
+      await getUserStreak({ user: { id: userA._id.toString() }, query: { timezone: 'UTC' } }, res);
+      assert.equal(resCode, 200);
+      assert.equal(resData.data.activeToday, true);
+      assert.equal(resData.data.currentStreak, 1);
+      assert.equal(resData.data.longestStreak, 1);
+    });
+
+    test('multi-day streak across Practice (Day 1) + Ranked (Day 2) + Competition (Day 3) creates streak = 3', async () => {
+      const { getUserStreak } = await import('../src/controllers/performanceController.js');
+
+      const now = Date.now();
+      const day1 = new Date(now - 2 * 86400000);
+      const day2 = new Date(now - 1 * 86400000);
+      const day3 = new Date(now);
+
+      // Day 1: Practice
+      await Performance.create({
+        userId: userA._id,
+        mode: 'practice',
+        language: 'python',
+        difficulty: 'easy',
+        timerSeconds: 60,
+        wpm: 65,
+        accuracy: 97,
+        correctChars: 250,
+        incorrectChars: 4,
+        elapsedSeconds: 60,
+        snippetId: 'p-1',
+        createdAt: day1,
+      });
+
+      // Day 2: Ranked
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'javascript',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 75,
+        accuracy: 98,
+        correctChars: 300,
+        incorrectChars: 2,
+        elapsedSeconds: 60,
+        snippetId: 'r-1',
+        createdAt: day2,
+      });
+
+      // Day 3: Competition
+      await Performance.create({
+        userId: userA._id,
+        mode: 'competition',
+        roomCode: 'RACE33',
+        language: 'cpp',
+        difficulty: 'hard',
+        timerSeconds: 120,
+        wpm: 85,
+        accuracy: 99,
+        correctChars: 400,
+        incorrectChars: 1,
+        elapsedSeconds: 105,
+        snippetId: 'c-1',
+        createdAt: day3,
+      });
+
+      let resCode = null;
+      let resData = null;
+      const res = {
+        status: (c) => {
+          resCode = c;
+          return { json: (d) => { resData = d; } };
+        },
+      };
+
+      await getUserStreak({ user: { id: userA._id.toString() }, query: { timezone: 'UTC' } }, res);
+      assert.equal(resCode, 200);
+      assert.equal(resData.data.activeToday, true);
+      assert.equal(resData.data.currentStreak, 3);
+      assert.equal(resData.data.longestStreak, 3);
+    });
+
+    test('dailyActivity aggregates Practice, Ranked, and Competition sessions into total counts', async () => {
+      const timestamps = [
+        '2026-09-08T08:00:00Z', // Practice
+        '2026-09-08T12:00:00Z', // Ranked
+        '2026-09-08T18:00:00Z', // Competition
+        '2026-09-09T09:00:00Z', // Competition 1
+        '2026-09-09T15:00:00Z', // Competition 2
+      ];
+
+      const result = calculateDailyStreak(timestamps, {
+        referenceDate: '2026-09-09T12:00:00Z',
+        timeZone: 'UTC',
+      });
+
+      assert.equal(result.currentStreak, 2);
+      assert.equal(result.longestStreak, 2);
+      assert.equal(result.activeToday, true);
+      assert.deepEqual(result.dailyActivity, [
+        { date: '2026-09-08', testCount: 3 },
+        { date: '2026-09-09', testCount: 2 },
+      ]);
+    });
+
+    test('public profile includes Competition attempts in public visitor heatmap even when Practice is private', async () => {
+      const { getPublicProfile } = await import('../src/controllers/authController.js');
+
+      await User.updateOne({ _id: userA._id }, { practiceStatsVisibility: 'private' });
+
+      const today = new Date();
+
+      // User A completes 1 Private Practice + 1 Public Competition attempt today
+      await Performance.create({
+        userId: userA._id,
+        mode: 'practice',
+        language: 'python',
+        difficulty: 'easy',
+        timerSeconds: 30,
+        wpm: 60,
+        accuracy: 95,
+        correctChars: 150,
+        incorrectChars: 3,
+        elapsedSeconds: 30,
+        snippetId: 'p-priv',
+        createdAt: today,
+      });
+
+      await Performance.create({
+        userId: userA._id,
+        mode: 'competition',
+        roomCode: 'PUBLIC_RACE',
+        language: 'javascript',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 82,
+        accuracy: 99,
+        correctChars: 320,
+        incorrectChars: 1,
+        elapsedSeconds: 55,
+        snippetId: 'comp-pub',
+        createdAt: today,
+      });
+
+      // 1. Public Visitor
+      let visitorResCode = null;
+      let visitorResData = null;
+      const visitorRes = {
+        status: (c) => {
+          visitorResCode = c;
+          return { json: (d) => { visitorResData = d; } };
+        },
+      };
+
+      await getPublicProfile({ params: { username: userA.username } }, visitorRes);
+      assert.equal(visitorResCode, 200);
+      assert.equal(visitorResData.data.isOwner, false);
+      assert.equal(visitorResData.data.practice, null); // Private
+      assert.equal(visitorResData.data.streak.activeToday, true);
+      assert.equal(visitorResData.data.streak.currentStreak, 1);
+      // Visitor sees the 1 competition attempt in dailyActivity
+      assert.equal(visitorResData.data.streak.dailyActivity.length, 1);
+      assert.equal(visitorResData.data.streak.dailyActivity[0].testCount, 1);
+
+      // 2. Profile Owner
+      let ownerResCode = null;
+      let ownerResData = null;
+      const ownerRes = {
+        status: (c) => {
+          ownerResCode = c;
+          return { json: (d) => { ownerResData = d; } };
+        },
+      };
+
+      await getPublicProfile({ params: { username: userA.username }, user: { id: userA._id.toString() } }, ownerRes);
+      assert.equal(ownerResCode, 200);
+      assert.equal(ownerResData.data.isOwner, true);
+      // Owner sees all 2 attempts (Practice + Competition) in dailyActivity
+      assert.equal(ownerResData.data.streak.dailyActivity.length, 1);
+      assert.equal(ownerResData.data.streak.dailyActivity[0].testCount, 2);
+    });
+
+    test('daily activity endpoint returns competitionCount and competition attempt details with roomCode', async () => {
+      const { getUserDailyActivity } = await import('../src/controllers/authController.js');
+
+      const targetDate = '2026-09-11';
+      const createdDate = new Date('2026-09-11T12:00:00Z');
+
+      // 1 Ranked, 1 Practice, 2 Competition attempts
+      await Performance.create({
+        userId: userA._id,
+        mode: 'ranked',
+        language: 'javascript',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 75,
+        accuracy: 98,
+        correctChars: 300,
+        incorrectChars: 2,
+        elapsedSeconds: 60,
+        snippetId: 'js-r',
+        createdAt: createdDate,
+      });
+
+      await Performance.create({
+        userId: userA._id,
+        mode: 'practice',
+        language: 'python',
+        difficulty: 'easy',
+        timerSeconds: 30,
+        wpm: 65,
+        accuracy: 96,
+        correctChars: 150,
+        incorrectChars: 3,
+        elapsedSeconds: 30,
+        snippetId: 'py-p',
+        createdAt: new Date('2026-09-11T13:00:00Z'),
+      });
+
+      await Performance.create({
+        userId: userA._id,
+        mode: 'competition',
+        roomCode: 'ROOM01',
+        language: 'cpp',
+        difficulty: 'hard',
+        timerSeconds: 120,
+        wpm: 90,
+        accuracy: 99.5,
+        correctChars: 450,
+        incorrectChars: 1,
+        elapsedSeconds: 98,
+        snippetId: 'cpp-c1',
+        createdAt: new Date('2026-09-11T14:00:00Z'),
+      });
+
+      await Performance.create({
+        userId: userA._id,
+        mode: 'competition',
+        roomCode: 'ROOM02',
+        language: 'java',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 85,
+        accuracy: 98.2,
+        correctChars: 340,
+        incorrectChars: 2,
+        elapsedSeconds: 58,
+        snippetId: 'java-c2',
+        createdAt: new Date('2026-09-11T15:00:00Z'),
+      });
+
+      // 1. Profile Owner request
+      let ownerResCode = null;
+      let ownerResBody = null;
+      const ownerRes = {
+        status: (c) => {
+          ownerResCode = c;
+          return { json: (d) => { ownerResBody = d; } };
+        },
+      };
+
+      await getUserDailyActivity({
+        params: { username: userA.username, date: targetDate },
+        user: { id: userA._id.toString() },
+      }, ownerRes);
+
+      assert.equal(ownerResCode, 200);
+      assert.equal(ownerResBody.data.totalTests, 4);
+      assert.equal(ownerResBody.data.rankedCount, 1);
+      assert.equal(ownerResBody.data.practiceCount, 1);
+      assert.equal(ownerResBody.data.competitionCount, 2);
+
+      const compTests = ownerResBody.data.tests.filter((t) => t.mode === 'competition');
+      assert.equal(compTests.length, 2);
+      assert.ok(compTests.some((t) => t.roomCode === 'ROOM01'));
+      assert.ok(compTests.some((t) => t.roomCode === 'ROOM02'));
+
+      // 2. Public Visitor request (userA practice is private)
+      let visitorResCode = null;
+      let visitorResBody = null;
+      const visitorRes = {
+        status: (c) => {
+          visitorResCode = c;
+          return { json: (d) => { visitorResBody = d; } };
+        },
+      };
+
+      await getUserDailyActivity({
+        params: { username: userA.username, date: targetDate },
+      }, visitorRes);
+
+      assert.equal(visitorResCode, 200);
+      assert.equal(visitorResBody.data.isOwner, false);
+      // Practice excluded, Ranked (1) + Competition (2) included
+      assert.equal(visitorResBody.data.totalTests, 3);
+      assert.equal(visitorResBody.data.rankedCount, 1);
+      assert.equal(visitorResBody.data.practiceCount, 0);
+      assert.equal(visitorResBody.data.competitionCount, 2);
+    });
+  });
 });
 

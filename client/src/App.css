@@ -122,6 +122,10 @@ body {
   color: var(--accent-violet) !important;
 }
 
+.text-indigo {
+  color: #818cf8 !important;
+}
+
 .text-green {
   color: var(--accent-green) !important;
 }
@@ -3264,6 +3268,16 @@ body {
   background: rgba(59, 130, 246, 0.1);
   border: 1px solid rgba(59, 130, 246, 0.3);
   color: #60a5fa;
+}
+
+.badge-competition {
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #818cf8;
+}
+
+.activity-attempt-row.row-competition:hover td {
+  background: rgba(99, 102, 241, 0.04);
 }
 
 .col-lang {
