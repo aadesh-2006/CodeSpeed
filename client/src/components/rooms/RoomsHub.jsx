@@ -145,7 +145,7 @@ export function RoomsHub({ onNavigateToRoom }) {
             <div className="form-group">
               <label className="form-label">Timer Duration</label>
               <div className="btn-group-pill">
-                {TIMER_OPTIONS.slice(0, 6).map((timer) => (
+                {TIMER_OPTIONS.map((timer) => (
                   <button
                     key={timer.seconds}
                     type="button"
