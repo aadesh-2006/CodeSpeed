@@ -173,8 +173,15 @@ export function RoomLobby({
 
           <div className="participants-list">
             {participants.map((p, idx) => {
-              const isParticipantHost = p.userId === room?.hostId || p.username === room?.hostUsername;
-              const isCurrent = currentUser?.id && p.userId === currentUser.id;
+              const isParticipantHost = Boolean(
+                (room?.hostId && (p.userId === room.hostId || p.userId?.toString() === room.hostId.toString())) ||
+                (room?.hostUsername && p.username && p.username.toLowerCase() === room.hostUsername.toLowerCase())
+              );
+              const isCurrent = Boolean(
+                (currentUser?.id && (p.userId === currentUser.id || p.userId?.toString() === currentUser.id.toString())) ||
+                (currentUser?._id && (p.userId === currentUser._id || p.userId?.toString() === currentUser._id.toString())) ||
+                (currentUser?.username && p.username && currentUser.username.toLowerCase() === p.username.toLowerCase())
+              );
 
               return (
                 <div key={p.userId || idx} className={`participant-item ${isCurrent ? 'current-user-item' : ''}`}>
@@ -292,12 +299,12 @@ export function RoomLobby({
                 onClick={handleStart}
                 disabled={status !== 'waiting' || isStarting}
               >
-                {isStarting ? 'Starting...' : 'Start Competition'}
+                {isStarting ? 'Starting...' : 'Start Match'}
               </button>
             ) : (
               <div className="waiting-host-notice">
                 <span className="pulse-dot"></span>
-                <span>Waiting for host (<strong>{room?.hostUsername}</strong>) to start the match...</span>
+                <span>Waiting for host (<strong>{room?.hostUsername || 'Host'}</strong>) to start the match...</span>
               </div>
             )}
           </div>

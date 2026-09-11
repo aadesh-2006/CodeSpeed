@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 
 export function RoomResults({
   room,
@@ -83,7 +83,11 @@ export function RoomResults({
                 <div className="winner-name-row">
                   <h2 className="winner-username">{winner.username}</h2>
                   {winner.userId === room?.hostId && <span className="badge-participant-host">HOST</span>}
-                  {currentUser?.id && (winner.userId === currentUser.id || winner.userId === currentUser.id.toString()) && (
+                  {Boolean(
+                    (currentUser?.id && (winner.userId === currentUser.id || winner.userId?.toString() === currentUser.id.toString())) ||
+                    (currentUser?._id && (winner.userId === currentUser._id || winner.userId?.toString() === currentUser._id.toString())) ||
+                    (currentUser?.username && winner.username && currentUser.username.toLowerCase() === winner.username.toLowerCase())
+                  ) && (
                     <span className="badge-participant-you">YOU</span>
                   )}
                 </div>
@@ -132,9 +136,11 @@ export function RoomResults({
               {sortedResults.map((racer, idx) => {
                 const rankNum = racer.rank || idx + 1;
                 const isHost = racer.userId === room?.hostId;
-                const isYou =
-                  currentUser?.id &&
-                  (racer.userId === currentUser.id || racer.userId === currentUser.id.toString());
+                const isYou = Boolean(
+                  (currentUser?.id && (racer.userId === currentUser.id || racer.userId?.toString() === currentUser.id.toString())) ||
+                  (currentUser?._id && (racer.userId === currentUser._id || racer.userId?.toString() === currentUser._id.toString())) ||
+                  (currentUser?.username && racer.username && currentUser.username.toLowerCase() === racer.username.toLowerCase())
+                );
                 const isCompleted = racer.completedSnippet || racer.status === 'finished';
                 const isTimedOut = racer.status === 'timed_out';
                 const isAbandoned = racer.status === 'abandoned';

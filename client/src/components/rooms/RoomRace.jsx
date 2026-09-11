@@ -59,7 +59,10 @@ export function RoomRace({
 
   // Check if current user is already finished
   const currentParticipant = participants.find(
-    (p) => currentUser?.id && (p.userId === currentUser.id || p.userId === currentUser.id.toString())
+    (p) =>
+      (currentUser?.id && (p.userId === currentUser.id || p.userId?.toString() === currentUser.id.toString())) ||
+      (currentUser?._id && (p.userId === currentUser._id || p.userId?.toString() === currentUser._id.toString())) ||
+      (currentUser?.username && p.username && currentUser.username.toLowerCase() === p.username.toLowerCase())
   );
   const isCurrentUserFinished = isFinished || currentParticipant?.status === 'finished';
 
@@ -273,7 +276,11 @@ export function RoomRace({
         <div className="competitors-list">
           {participants.map((p, idx) => {
             const isHost = p.userId === room?.hostId;
-            const isYou = currentUser?.id && (p.userId === currentUser.id || p.userId === currentUser.id.toString());
+            const isYou = Boolean(
+              (currentUser?.id && (p.userId === currentUser.id || p.userId?.toString() === currentUser.id.toString())) ||
+              (currentUser?._id && (p.userId === currentUser._id || p.userId?.toString() === currentUser._id.toString())) ||
+              (currentUser?.username && p.username && currentUser.username.toLowerCase() === p.username.toLowerCase())
+            );
             const pProgress = isYou ? progressPercent : (p.progressPercent || 0);
             const pWpm = isYou ? liveWpm : (p.liveWpm || p.wpm || 0);
             const pStatus = p.status || 'joined';

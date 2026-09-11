@@ -169,7 +169,8 @@ describe('Multiplayer Competition Rooms — Milestone 2, 3, 4 & 5 Frontend Tests
 
       assert.ok(html.includes('badge-participant-host'), 'Host badge class must be present');
       assert.ok(html.includes('badge-participant-you'), 'You badge class must be present');
-      assert.ok(html.includes('Start Competition'), 'Host should see Start Competition button');
+      assert.ok(html.includes('Start Match'), 'Host should see Start Match button');
+      assert.ok(html.includes('btn-start-competition'), 'Host should see start competition button element');
     });
 
     test('displays YOU badge correctly on non-host participant', () => {
@@ -185,6 +186,7 @@ describe('Multiplayer Competition Rooms — Milestone 2, 3, 4 & 5 Frontend Tests
       assert.ok(html.includes('badge-participant-you'), 'You badge class must be present on ChallengerOne');
       assert.ok(html.includes('Waiting for host'), 'Non-host should see waiting notice');
       assert.ok(!html.includes('btn-start-competition'), 'Non-host should not see Start button');
+      assert.ok(!html.includes('Start Match'), 'Non-host should not see Start Match text');
     });
 
     test('renders interactive form controls when user is host in waiting status', () => {
@@ -198,7 +200,7 @@ describe('Multiplayer Competition Rooms — Milestone 2, 3, 4 & 5 Frontend Tests
 
       assert.ok(html.includes('lobby-lang-select'), 'Host should have interactive language select');
       assert.ok(html.includes('btn-group-pill'), 'Host should have difficulty & timer pill buttons');
-      assert.ok(html.includes('Start Competition'), 'Host should have Start Competition button');
+      assert.ok(html.includes('Start Match'), 'Host should have Start Match button');
       // Verify all 7 timer buttons are present
       assert.ok(html.includes('30s'));
       assert.ok(html.includes('1m'));
@@ -223,6 +225,21 @@ describe('Multiplayer Competition Rooms — Milestone 2, 3, 4 & 5 Frontend Tests
       assert.ok(html.includes('Python'), 'Language name should be displayed');
       assert.ok(html.includes('Hard'), 'Difficulty name should be displayed');
       assert.ok(html.includes('2 minutes'), 'Timer duration should be displayed');
+    });
+
+    test('correctly identifies host by username and _id and enables Start Match', () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomLobby, {
+          room: mockRoom,
+          currentUser: { _id: 'user-123', username: 'SpeedHost' },
+          isHost: true,
+        })
+      );
+
+      assert.ok(html.includes('Start Match'), 'Host matching by _id/username must see Start Match');
+      assert.ok(html.includes('btn-start-competition'), 'Host must see start competition button');
+      assert.ok(html.includes('badge-participant-host'), 'Host badge must be present');
+      assert.ok(html.includes('badge-participant-you'), 'You badge must be present');
     });
 
     test('renders countdown transition state when room status is countdown', () => {

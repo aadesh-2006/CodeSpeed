@@ -15,7 +15,13 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
 
   // Determine if the current authenticated user is the room host
   const isHost = Boolean(
-    currentUser?.id && room?.hostId && (room.hostId === currentUser.id || room.hostId === currentUser.id.toString())
+    currentUser &&
+    room &&
+    (
+      (currentUser.id && room.hostId && (room.hostId === currentUser.id || room.hostId === currentUser.id.toString())) ||
+      (currentUser._id && room.hostId && (room.hostId === currentUser._id || room.hostId === currentUser._id.toString())) ||
+      (currentUser.username && room.hostUsername && currentUser.username.toLowerCase() === room.hostUsername.toLowerCase())
+    )
   );
 
   // Helper to fetch competition results for finished room

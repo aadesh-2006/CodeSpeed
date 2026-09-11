@@ -348,6 +348,7 @@ function App() {
         {activeRoomCode ? (
           <RoomView
             roomCode={activeRoomCode}
+            currentUser={user}
             onNavigateBack={() => {
               setActiveRoomCode(null);
               setCurrentView('rooms');
