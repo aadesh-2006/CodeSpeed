@@ -7,10 +7,12 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const TOKEN_KEY = 'codespeed_token';
 
 export const getToken = () => {
+  if (typeof localStorage === 'undefined') return null;
   return localStorage.getItem(TOKEN_KEY);
 };
 
 export const setToken = (token) => {
+  if (typeof localStorage === 'undefined') return;
   if (token) {
     localStorage.setItem(TOKEN_KEY, token);
   } else {
@@ -19,6 +21,7 @@ export const setToken = (token) => {
 };
 
 export const clearToken = () => {
+  if (typeof localStorage === 'undefined') return;
   localStorage.removeItem(TOKEN_KEY);
 };
 
@@ -146,6 +149,23 @@ export const api = {
     const queryString = tz ? `?timezone=${encodeURIComponent(tz)}` : '';
     return request(`/api/users/me/streak${queryString}`, { method: 'GET' });
   },
+
+  // Multiplayer Competition Rooms
+  createRoom: (roomConfig) =>
+    request('/api/rooms', {
+      method: 'POST',
+      body: JSON.stringify(roomConfig),
+    }),
+
+  getRoom: (roomCode) =>
+    request(`/api/rooms/${encodeURIComponent((roomCode || '').toUpperCase().trim())}`, {
+      method: 'GET',
+    }),
+
+  getRoomResults: (roomCode) =>
+    request(`/api/rooms/${encodeURIComponent((roomCode || '').toUpperCase().trim())}/results`, {
+      method: 'GET',
+    }),
 };
 
 export default api;

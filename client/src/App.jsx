@@ -10,6 +10,9 @@ import PublicProfile from './components/PublicProfile';
 import DailyActivity from './components/DailyActivity';
 import Settings from './components/Settings';
 import UserSearch from './components/UserSearch';
+import RoomsHub from './components/rooms/RoomsHub';
+import RoomView from './components/rooms/RoomView';
+import socketService from './services/socket';
 import { SUPPORTED_LANGUAGES, getRandomSnippet } from './data/snippets';
 import './App.css';
 
@@ -18,13 +21,14 @@ function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Top-level view: 'dashboard' | 'test' | 'history' | 'settings'
+  // Top-level view: 'dashboard' | 'test' | 'history' | 'settings' | 'rooms'
   const [currentView, setCurrentView] = useState('dashboard');
   const [historyInitialMode, setHistoryInitialMode] = useState('practice');
 
-  // Shareable Public Profile & Daily Activity routing state
+  // Shareable Public Profile, Daily Activity & Competition Room routing state
   const [publicProfileUsername, setPublicProfileUsername] = useState(null);
   const [dailyActivityRoute, setDailyActivityRoute] = useState(null);
+  const [activeRoomCode, setActiveRoomCode] = useState(null);
 
   // Typing engine & mode states
   const [selectedMode, setSelectedMode] = useState('practice'); // 'practice' | 'ranked'
@@ -40,15 +44,34 @@ function App() {
 
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-  // Listen to URL hash routing for #/user/:username and #/user/:username/activity/:date
+  // Listen to URL hash routing for #/user/:username, #/user/:username/activity/:date, #/rooms, and #/room/:code
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash || '';
+
+      // Match #/room/:code
+      const roomMatch = hash.match(/^#\/room\/([^/?#]+)/);
+      if (roomMatch && roomMatch[1]) {
+        setPublicProfileUsername(null);
+        setDailyActivityRoute(null);
+        setActiveRoomCode(decodeURIComponent(roomMatch[1]).toUpperCase());
+        return;
+      }
+
+      // Match #/rooms
+      if (hash === '#/rooms' || hash === '#rooms') {
+        setPublicProfileUsername(null);
+        setDailyActivityRoute(null);
+        setActiveRoomCode(null);
+        setCurrentView('rooms');
+        return;
+      }
 
       // Match #/user/:username/activity/:date or /user/:username/activity/:date
       const activityMatch = hash.match(/^#\/user\/([^/?#]+)\/activity\/([^/?#]+)/);
       if (activityMatch && activityMatch[1] && activityMatch[2]) {
         setPublicProfileUsername(null);
+        setActiveRoomCode(null);
         setDailyActivityRoute({
           username: decodeURIComponent(activityMatch[1]),
           date: decodeURIComponent(activityMatch[2]),
@@ -59,10 +82,12 @@ function App() {
       const userMatch = hash.match(/^#\/user\/([^/?#]+)/);
       if (userMatch && userMatch[1]) {
         setDailyActivityRoute(null);
+        setActiveRoomCode(null);
         setPublicProfileUsername(decodeURIComponent(userMatch[1]));
       } else {
         setDailyActivityRoute(null);
         setPublicProfileUsername(null);
+        setActiveRoomCode(null);
       }
     };
 
@@ -124,8 +149,10 @@ function App() {
   };
 
   const handleLogout = () => {
+    socketService.disconnectSocket();
     clearToken();
     setUser(null);
+    setActiveRoomCode(null);
     setTestState('IDLE');
     setCurrentSnippet(null);
     setTestResults(null);
@@ -255,6 +282,17 @@ function App() {
               </button>
               <button
                 type="button"
+                className={`nav-link ${currentView === 'rooms' && !activeRoomCode ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveRoomCode(null);
+                  setCurrentView('rooms');
+                  window.location.hash = '/rooms';
+                }}
+              >
+                Rooms
+              </button>
+              <button
+                type="button"
                 className={`nav-link ${currentView === 'settings' ? 'active' : ''}`}
                 onClick={() => setCurrentView('settings')}
               >
@@ -306,8 +344,17 @@ function App() {
 
       {/* Main Content Area */}
       <main className="main-content">
-        {/* Daily Activity Details View (#/user/:username/activity/:date) */}
-        {dailyActivityRoute ? (
+        {/* Active Room View (#/room/:code) */}
+        {activeRoomCode ? (
+          <RoomView
+            roomCode={activeRoomCode}
+            onNavigateBack={() => {
+              setActiveRoomCode(null);
+              setCurrentView('rooms');
+              window.location.hash = '/rooms';
+            }}
+          />
+        ) : dailyActivityRoute ? (
           <DailyActivity
             username={dailyActivityRoute.username}
             date={dailyActivityRoute.date}
@@ -362,6 +409,16 @@ function App() {
                   setSelectedMode('practice');
                   setTestState('IDLE');
                   setCurrentView('test');
+                }}
+              />
+            )}
+
+            {/* View: Multiplayer Competition Rooms Hub */}
+            {currentView === 'rooms' && (
+              <RoomsHub
+                onNavigateToRoom={(code) => {
+                  setActiveRoomCode(code);
+                  window.location.hash = `/room/${code}`;
                 }}
               />
             )}
