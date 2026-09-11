@@ -566,19 +566,23 @@ class RoomManager {
     participant.completedSnippet = Boolean(completedSnippet || safeCorrect >= targetCode.length);
     participant.finishedAt = new Date();
 
-    // Persist CompetitionResult document
-    await CompetitionResult.create({
-      roomCode: cleanCode,
-      roomId: room.id,
-      userId: participant.userId,
-      username: participant.username,
-      wpm: computedWpm,
-      accuracy: computedAccuracy,
-      completionTimeSeconds: serverElapsedSeconds,
-      rank,
-      completedSnippet: participant.completedSnippet,
-      submittedAt: participant.finishedAt,
-    }).catch((err) => console.error('[RoomManager] CompetitionResult creation error:', err.message));
+    // Upsert CompetitionResult document
+    await CompetitionResult.findOneAndUpdate(
+      { roomCode: cleanCode, userId: participant.userId },
+      {
+        roomCode: cleanCode,
+        roomId: room.id,
+        userId: participant.userId,
+        username: participant.username,
+        wpm: computedWpm,
+        accuracy: computedAccuracy,
+        completionTimeSeconds: serverElapsedSeconds,
+        rank,
+        completedSnippet: participant.completedSnippet,
+        submittedAt: participant.finishedAt,
+      },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    ).catch((err) => console.error('[RoomManager] CompetitionResult upsert error:', err.message));
 
     // Persist user Performance record with mode: 'competition' for streak & history
     await Performance.create({
@@ -621,29 +625,63 @@ class RoomManager {
   }
 
   /**
-   * Finalize the room, sort leaderboard ranks, persist to DB, and clear timeouts.
+   * Finalize the room, sort leaderboard ranks deterministically, persist to DB, and clear timeouts.
+   *
+   * Deterministic Ranking Specification:
+   * 1. Finished participants (completed snippet) rank ahead of incomplete / timed out / abandoned.
+   * 2. Among finished participants:
+   *    - Primary: lower elapsedSeconds (fastest completion time).
+   *    - Tie-breaker: earlier finishedAt timestamp.
+   * 3. Among incomplete / timed out / abandoned participants:
+   *    - Primary: higher progressPercent.
+   *    - Tie-breaker 1: higher liveWpm / wpm.
+   *    - Tie-breaker 2: higher accuracy.
    */
   async finalizeRoom(roomCode, onFinished) {
-    const room = this.rooms.get(roomCode);
-    if (!room || room.status === 'finished') return;
+    const cleanCode = (roomCode || '').toUpperCase().trim();
+    const room = this.rooms.get(cleanCode);
+    if (!room || room.status === 'finished') return room ? this.formatRoomState(room) : null;
 
     this.clearTimers(room);
     room.status = 'finished';
 
-    // Sort participants: completedSnippet first, then highest WPM, then highest accuracy, then lowest elapsedSeconds
+    // Deterministic sorting
     const sorted = [...room.participants].sort((a, b) => {
-      if (a.completedSnippet !== b.completedSnippet) {
-        return a.completedSnippet ? -1 : 1;
+      const aFinished = a.status === 'finished' || a.completedSnippet;
+      const bFinished = b.status === 'finished' || b.completedSnippet;
+
+      // 1. Finished ahead of unfinished
+      if (aFinished !== bFinished) {
+        return aFinished ? -1 : 1;
       }
-      if (b.wpm !== a.wpm) {
-        return b.wpm - a.wpm;
+
+      // 2. Among finished participants: elapsedSeconds ASC, finishedAt ASC
+      if (aFinished && bFinished) {
+        const aElapsed = a.elapsedSeconds || 9999;
+        const bElapsed = b.elapsedSeconds || 9999;
+        if (aElapsed !== bElapsed) {
+          return aElapsed - bElapsed; // Lower time ranks higher
+        }
+        const aTime = a.finishedAt ? new Date(a.finishedAt).getTime() : 0;
+        const bTime = b.finishedAt ? new Date(b.finishedAt).getTime() : 0;
+        return aTime - bTime; // Earlier finish ranks higher
       }
-      if (b.accuracy !== a.accuracy) {
-        return b.accuracy - a.accuracy;
+
+      // 3. Among unfinished/timed out/abandoned participants
+      const aProgress = a.progressPercent || 0;
+      const bProgress = b.progressPercent || 0;
+      if (bProgress !== aProgress) {
+        return bProgress - aProgress; // Higher progress ranks higher
       }
-      return (a.elapsedSeconds || 999) - (b.elapsedSeconds || 999);
+      const aWpm = a.wpm || a.liveWpm || 0;
+      const bWpm = b.wpm || b.liveWpm || 0;
+      if (bWpm !== aWpm) {
+        return bWpm - aWpm; // Higher WPM ranks higher
+      }
+      return (b.accuracy || 0) - (a.accuracy || 0); // Higher accuracy ranks higher
     });
 
+    // Assign 1-based ranks
     sorted.forEach((p, idx) => {
       const original = room.participants.find((orig) => orig.userId.toString() === p.userId.toString());
       if (original) {
@@ -651,8 +689,29 @@ class RoomManager {
       }
     });
 
+    // Idempotent upsert into CompetitionResult for all participants
+    for (const p of room.participants) {
+      const isCompleted = Boolean(p.completedSnippet || p.status === 'finished');
+      await CompetitionResult.findOneAndUpdate(
+        { roomCode: cleanCode, userId: p.userId },
+        {
+          roomCode: cleanCode,
+          roomId: room.id,
+          userId: p.userId,
+          username: p.username,
+          wpm: p.wpm || p.liveWpm || 0,
+          accuracy: p.accuracy || 0,
+          completionTimeSeconds: p.elapsedSeconds || 0,
+          rank: p.rank || 1,
+          completedSnippet: isCompleted,
+          submittedAt: p.finishedAt || new Date(),
+        },
+        { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+      ).catch((err) => console.error('[RoomManager] Finalize CompetitionResult upsert error:', err.message));
+    }
+
     await CompetitionRoom.updateOne(
-      { roomCode },
+      { roomCode: cleanCode },
       {
         status: 'finished',
         participants: room.participants,

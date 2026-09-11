@@ -10,7 +10,7 @@ router.post('/', authenticate, createRoom);
 // Get room by code (Optional authentication)
 router.get('/:code', optionalAuthenticate, getRoom);
 
-// Get finalized competition results
-router.get('/:code/results', optionalAuthenticate, getRoomResults);
+// Get finalized competition results (Participant authenticated only)
+router.get('/:code/results', authenticate, getRoomResults);
 
 export default router;

@@ -676,5 +676,319 @@ describe('Real-Time Multiplayer Competition Rooms — Milestone 1 Backend Tests'
       assert.strictEqual(validProgress.liveWpm, 65);
     });
   });
+
+  describe('7. Competition Results REST API & Deterministic Ranking (Milestone 5)', () => {
+    test('GET /api/rooms/:code/results rejects unauthenticated requests with 401', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'python', difficulty: 'easy', timerSeconds: 30 },
+      });
+
+      const res = await fetch(`${baseUrl}/api/rooms/${room.roomCode}/results`);
+      assert.strictEqual(res.status, 401);
+      const json = await res.json();
+      assert.strictEqual(json.status, 'error');
+    });
+
+    test('GET /api/rooms/:code/results rejects authenticated non-participants with 403', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'python', difficulty: 'easy', timerSeconds: 30 },
+      });
+
+      // participantUser2 is NOT in this room
+      const res = await fetch(`${baseUrl}/api/rooms/${room.roomCode}/results`, {
+        headers: { Authorization: `Bearer ${participantToken2}` },
+      });
+      assert.strictEqual(res.status, 403);
+      const json = await res.json();
+      assert.strictEqual(json.status, 'error');
+      assert.ok(json.message.includes('forbidden') || json.message.includes('participant'));
+    });
+
+    test('GET /api/rooms/:code/results returns 404 for non-existent room', async () => {
+      const res = await fetch(`${baseUrl}/api/rooms/NONEX9/results`, {
+        headers: { Authorization: `Bearer ${hostToken}` },
+      });
+      assert.strictEqual(res.status, 404);
+      const json = await res.json();
+      assert.strictEqual(json.status, 'error');
+      assert.ok(json.message.includes('not found'));
+    });
+
+    test('GET /api/rooms/:code/results returns enriched room metadata and sorted results to participants', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'python', difficulty: 'hard', timerSeconds: 60 },
+      });
+
+      await roomManager.joinRoom({
+        roomCode: room.roomCode,
+        user: { userId: participantUser._id, username: participantUser.username },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 30000);
+
+      // Submit result for participant 1 (fast finish: 20s, 95% accuracy)
+      activeRoom.participants[0].status = 'finished';
+      activeRoom.participants[0].completedSnippet = true;
+      activeRoom.participants[0].elapsedSeconds = 20;
+      activeRoom.participants[0].accuracy = 95;
+      activeRoom.participants[0].wpm = 95;
+      activeRoom.participants[0].finishedAt = new Date(Date.now() - 10000);
+
+      // Submit result for participant 2 (slower finish: 25s, 100% accuracy)
+      activeRoom.participants[1].status = 'finished';
+      activeRoom.participants[1].completedSnippet = true;
+      activeRoom.participants[1].elapsedSeconds = 25;
+      activeRoom.participants[1].accuracy = 100;
+      activeRoom.participants[1].wpm = 80;
+      activeRoom.participants[1].finishedAt = new Date(Date.now() - 5000);
+
+      await roomManager.finalizeRoom(room.roomCode);
+
+      const res = await fetch(`${baseUrl}/api/rooms/${room.roomCode}/results`, {
+        headers: { Authorization: `Bearer ${hostToken}` },
+      });
+      assert.strictEqual(res.status, 200);
+      const json = await res.json();
+      assert.strictEqual(json.status, 'success');
+      assert.strictEqual(json.data.roomCode, room.roomCode);
+      assert.strictEqual(json.data.config.language, 'python');
+      assert.strictEqual(json.data.config.difficulty, 'hard');
+      assert.strictEqual(json.data.status, 'finished');
+      assert.strictEqual(json.data.results.length, 2);
+
+      // Verify Rank 1 (lowest elapsed seconds = 20s) and Rank 2 (25s)
+      assert.strictEqual(json.data.results[0].rank, 1);
+      assert.strictEqual(json.data.results[0].userId, hostUser._id.toString());
+      assert.strictEqual(json.data.results[0].completionTimeSeconds, 20);
+
+      assert.strictEqual(json.data.results[1].rank, 2);
+      assert.strictEqual(json.data.results[1].userId, participantUser._id.toString());
+      assert.strictEqual(json.data.results[1].completionTimeSeconds, 25);
+    });
+
+    test('GET /api/rooms/:code/results is durable across server restarts / in-memory room cleanup', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'javascript', difficulty: 'easy', timerSeconds: 30 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.participants[0].status = 'finished';
+      activeRoom.participants[0].completedSnippet = true;
+      activeRoom.participants[0].elapsedSeconds = 15;
+      activeRoom.participants[0].accuracy = 100;
+      activeRoom.participants[0].wpm = 110;
+      activeRoom.participants[0].finishedAt = new Date();
+
+      await roomManager.finalizeRoom(room.roomCode);
+
+      // Verify records in DB
+      const resultBefore = await CompetitionResult.findOne({ roomCode: room.roomCode });
+      assert.ok(resultBefore);
+
+      // Wipe in-memory state to simulate server restart / cache eviction
+      roomManager.reset();
+      assert.strictEqual(roomManager.rooms.has(room.roomCode), false);
+
+      // Fetch results via REST API from DB as host participant
+      const res = await fetch(`${baseUrl}/api/rooms/${room.roomCode}/results`, {
+        headers: { Authorization: `Bearer ${hostToken}` },
+      });
+      assert.strictEqual(res.status, 200);
+      const json = await res.json();
+      assert.strictEqual(json.status, 'success');
+      assert.strictEqual(json.data.roomCode, room.roomCode);
+      assert.strictEqual(json.data.results.length, 1);
+      assert.strictEqual(json.data.results[0].wpm, 110);
+      assert.strictEqual(json.data.results[0].rank, 1);
+    });
+
+    test('Corrected deterministic ranking: elapsedSeconds ASC then finishedAt ASC (accuracy must NOT tie-break finished racers)', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'java', difficulty: 'medium', timerSeconds: 60 },
+      });
+
+      await roomManager.joinRoom({
+        roomCode: room.roomCode,
+        user: { userId: participantUser._id, username: participantUser.username },
+      });
+
+      await roomManager.joinRoom({
+        roomCode: room.roomCode,
+        user: { userId: participantUser2._id, username: participantUser2.username },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+
+      const t1 = new Date(Date.now() - 20000); // Finished earlier
+      const t2 = new Date(Date.now() - 15000); // Finished later
+
+      // Participant 1 (Host): finished, 20s, 95% accuracy, finishedAt = t1 (earlier)
+      activeRoom.participants[0].status = 'finished';
+      activeRoom.participants[0].completedSnippet = true;
+      activeRoom.participants[0].elapsedSeconds = 20;
+      activeRoom.participants[0].accuracy = 95;
+      activeRoom.participants[0].wpm = 80;
+      activeRoom.participants[0].finishedAt = t1;
+
+      // Participant 2: finished, 20s, 99% accuracy, finishedAt = t2 (later)
+      // Even with 99% accuracy, Participant 2 finished later (t2 > t1) so Participant 1 wins rank 1
+      activeRoom.participants[1].status = 'finished';
+      activeRoom.participants[1].completedSnippet = true;
+      activeRoom.participants[1].elapsedSeconds = 20;
+      activeRoom.participants[1].accuracy = 99;
+      activeRoom.participants[1].wpm = 80;
+      activeRoom.participants[1].finishedAt = t2;
+
+      // Participant 3: timed_out, 60s, 75% progress (Ranks after finished participants)
+      activeRoom.participants[2].status = 'timed_out';
+      activeRoom.participants[2].completedSnippet = false;
+      activeRoom.participants[2].elapsedSeconds = 60;
+      activeRoom.participants[2].progressPercent = 75;
+      activeRoom.participants[2].accuracy = 90;
+      activeRoom.participants[2].wpm = 45;
+
+      await roomManager.finalizeRoom(room.roomCode);
+
+      // Participant 1 (earlier finishedAt t1) should be Rank 1
+      assert.strictEqual(activeRoom.participants[0].rank, 1);
+      // Participant 2 (later finishedAt t2) should be Rank 2 despite higher accuracy
+      assert.strictEqual(activeRoom.participants[1].rank, 2);
+      // Participant 3 (timed out) should be Rank 3
+      assert.strictEqual(activeRoom.participants[2].rank, 3);
+    });
+
+    test('Duplicate room finalization cannot create duplicate CompetitionResult documents', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'cpp', difficulty: 'easy', timerSeconds: 30 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.participants[0].status = 'finished';
+      activeRoom.participants[0].completedSnippet = true;
+      activeRoom.participants[0].elapsedSeconds = 18;
+      activeRoom.participants[0].accuracy = 100;
+      activeRoom.participants[0].wpm = 85;
+
+      // Finalize 1st time
+      await roomManager.finalizeRoom(room.roomCode);
+      // Finalize 2nd time (idempotency check)
+      await roomManager.finalizeRoom(room.roomCode);
+
+      const docs = await CompetitionResult.find({ roomCode: room.roomCode, userId: hostUser._id });
+      assert.strictEqual(docs.length, 1);
+    });
+
+    test('Client-provided rank in submission is ignored and server calculates authoritative rank', async () => {
+      const room = await roomManager.createRoom({
+        host: { userId: hostUser._id, username: hostUser.username },
+        config: { language: 'javascript', difficulty: 'easy', timerSeconds: 60 },
+      });
+
+      const activeRoom = roomManager.rooms.get(room.roomCode);
+      activeRoom.status = 'active';
+      activeRoom.raceStartsAt = new Date(Date.now() - 10000);
+
+      // Host submits with manipulated rank claim: { rank: 99 }
+      const res = await roomManager.submitResult({
+        roomCode: room.roomCode,
+        userId: hostUser._id,
+        submission: {
+          correctChars: 100,
+          incorrectChars: 0,
+          completedSnippet: true,
+          rank: 99, // Tampered client rank claim
+        },
+      });
+
+      assert.strictEqual(res.participant.rank, 1, 'Server must calculate rank independently');
+      const doc = await CompetitionResult.findOne({ roomCode: room.roomCode, userId: hostUser._id });
+      assert.strictEqual(doc.rank, 1, 'Persisted rank must be server-calculated');
+    });
+
+    test('Competition Performance records do NOT alter solo Ranked stats, personal bests, badges, or Practice stats', async () => {
+      // 1. Save solo Ranked performance: 75 WPM
+      await Performance.create({
+        userId: hostUser._id,
+        mode: 'ranked',
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 75,
+        accuracy: 94,
+        correctChars: 375,
+        incorrectChars: 24,
+        elapsedSeconds: 60,
+        snippetId: 'py-med-01',
+      });
+
+      // 2. Save solo Practice performance: 65 WPM
+      await Performance.create({
+        userId: hostUser._id,
+        mode: 'practice',
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 65,
+        accuracy: 92,
+        correctChars: 325,
+        incorrectChars: 28,
+        elapsedSeconds: 60,
+        snippetId: 'py-med-02',
+      });
+
+      // 3. Save high-score Competition performance: 140 WPM
+      await Performance.create({
+        userId: hostUser._id,
+        mode: 'competition',
+        language: 'python',
+        difficulty: 'medium',
+        timerSeconds: 60,
+        wpm: 140, // Much higher than ranked or practice
+        accuracy: 100,
+        correctChars: 700,
+        incorrectChars: 0,
+        elapsedSeconds: 60,
+        snippetId: 'py-med-03',
+        roomCode: 'TEST99',
+      });
+
+      // 4. Fetch Ranked summary
+      const rankedSummaryRes = await fetch(`${baseUrl}/api/performances/summary?mode=ranked`, {
+        headers: { Authorization: `Bearer ${hostToken}` },
+      });
+      const rankedSummary = await rankedSummaryRes.json();
+      assert.strictEqual(rankedSummary.data.personalBest.wpm, 75, 'Ranked PB must remain 75 WPM');
+      assert.strictEqual(rankedSummary.data.totalTests, 1, 'Ranked total tests must be 1');
+
+      // 5. Fetch Practice summary
+      const practiceSummaryRes = await fetch(`${baseUrl}/api/performances/summary?mode=practice`, {
+        headers: { Authorization: `Bearer ${hostToken}` },
+      });
+      const practiceSummary = await practiceSummaryRes.json();
+      assert.strictEqual(practiceSummary.data.personalBest.wpm, 65, 'Practice PB must remain 65 WPM');
+      assert.strictEqual(practiceSummary.data.totalTests, 1, 'Practice total tests must be 1');
+
+      // 6. Fetch Badges (evaluated against ranked attempts)
+      const badgesRes = await fetch(`${baseUrl}/api/performances/badges`, {
+        headers: { Authorization: `Bearer ${hostToken}` },
+      });
+      const badges = await badgesRes.json();
+      const speedBadge75 = badges.data.badges.find((b) => b.id === 'wpm_75');
+      const speedBadge100 = badges.data.badges.find((b) => b.id === 'wpm_100');
+      assert.strictEqual(speedBadge75.earned, true, '75 WPM badge should be earned from ranked');
+      assert.strictEqual(speedBadge100.earned, false, '100 WPM badge should NOT be unlocked by 140 WPM competition attempt');
+    });
+  });
 });
 

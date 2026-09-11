@@ -3,9 +3,11 @@ import { api } from '../../services/api';
 import socketService from '../../services/socket';
 import RoomLobby from './RoomLobby';
 import RoomRace from './RoomRace';
+import RoomResults from './RoomResults';
 
 export function RoomView({ roomCode, currentUser, onNavigateBack }) {
   const [room, setRoom] = useState(null);
+  const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -15,6 +17,21 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
   const isHost = Boolean(
     currentUser?.id && room?.hostId && (room.hostId === currentUser.id || room.hostId === currentUser.id.toString())
   );
+
+  // Helper to fetch competition results for finished room
+  const fetchResults = useCallback((code) => {
+    if (!code) return;
+    api
+      .getRoomResults(code)
+      .then((res) => {
+        if (res?.data?.results) {
+          setResults(res.data.results);
+        }
+      })
+      .catch((err) => {
+        console.error('[RoomView] Failed to fetch room results:', err.message);
+      });
+  }, []);
 
   // Initialize room and Socket.IO listeners
   useEffect(() => {
@@ -35,6 +52,9 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
         if (!isMounted) return;
         if (res?.data?.room) {
           setRoom(res.data.room);
+          if (res.data.room.status === 'finished') {
+            fetchResults(cleanCode);
+          }
         }
       })
       .catch((err) => {
@@ -182,6 +202,7 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
           ...(data.room || {}),
         };
       });
+      fetchResults(cleanCode);
     };
 
     const handleCancelled = (data) => {
@@ -222,6 +243,9 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
           setError(resp.error);
         } else if (resp?.room) {
           setRoom(resp.room);
+          if (resp.room.status === 'finished') {
+            fetchResults(cleanCode);
+          }
         }
       });
     }
@@ -243,7 +267,7 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
         socket.off('room:error', handleRoomError);
       }
     };
-  }, [cleanCode]);
+  }, [cleanCode, fetchResults]);
 
   // Actions
   const handleUpdateConfig = useCallback(
@@ -335,8 +359,27 @@ export function RoomView({ roomCode, currentUser, onNavigateBack }) {
     );
   }
 
-  // Render RoomRace when countdown, active, or finished
-  if (room?.status === 'countdown' || room?.status === 'active' || room?.status === 'finished') {
+  // Render RoomResults when finished
+  if (room?.status === 'finished') {
+    return (
+      <RoomResults
+        room={room}
+        results={results}
+        currentUser={currentUser}
+        onLeaveRoom={handleLeaveRoom}
+        onCreateNewRoom={() => {
+          if (typeof onNavigateBack === 'function') {
+            onNavigateBack();
+          } else {
+            window.location.hash = '/rooms';
+          }
+        }}
+      />
+    );
+  }
+
+  // Render RoomRace when countdown or active
+  if (room?.status === 'countdown' || room?.status === 'active') {
     return (
       <RoomRace
         room={room}

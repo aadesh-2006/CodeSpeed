@@ -4,12 +4,13 @@ import React from 'react';
 import ReactDOMServer from 'react-dom/server';
 import { createServer } from 'vite';
 
-describe('Multiplayer Competition Rooms — Milestone 2, 3 & 4 Frontend Tests', () => {
+describe('Multiplayer Competition Rooms — Milestone 2, 3, 4 & 5 Frontend Tests', () => {
   let viteServer;
   let RoomsHub;
   let RoomView;
   let RoomLobby;
   let RoomRace;
+  let RoomResults;
   let socketService;
   let api;
 
@@ -30,6 +31,9 @@ describe('Multiplayer Competition Rooms — Milestone 2, 3 & 4 Frontend Tests', 
 
     const roomRaceModule = await viteServer.ssrLoadModule('./src/components/rooms/RoomRace.jsx');
     RoomRace = roomRaceModule.RoomRace || roomRaceModule.default;
+
+    const roomResultsModule = await viteServer.ssrLoadModule('./src/components/rooms/RoomResults.jsx');
+    RoomResults = roomResultsModule.RoomResults || roomResultsModule.default;
 
     const socketModule = await viteServer.ssrLoadModule('./src/services/socket.js');
     socketService = socketModule.default || socketModule;
@@ -471,6 +475,175 @@ describe('Multiplayer Competition Rooms — Milestone 2, 3 & 4 Frontend Tests', 
       assert.strictEqual(typeof api.createRoom, 'function');
       assert.strictEqual(typeof api.getRoom, 'function');
       assert.strictEqual(typeof api.getRoomResults, 'function');
+    });
+  });
+
+  describe('7. RoomResults Post-Race Leaderboard Component', () => {
+    const finishedRoom = {
+      roomCode: 'WIN999',
+      hostId: 'host-1',
+      hostUsername: 'SpeedKing',
+      status: 'finished',
+      config: {
+        language: 'python',
+        difficulty: 'hard',
+        timerSeconds: 60,
+      },
+      snippet: {
+        id: 'py-hard-1',
+        title: 'Merge K Sorted Lists',
+        language: 'python',
+        difficulty: 'hard',
+        code: 'def mergeKLists(lists):\n    # Priority queue implementation\n    pass',
+      },
+      participants: [
+        {
+          userId: 'host-1',
+          username: 'SpeedKing',
+          profilePhoto: null,
+          status: 'finished',
+          wpm: 104,
+          accuracy: 99.2,
+          elapsedSeconds: 22,
+          rank: 1,
+          completedSnippet: true,
+        },
+        {
+          userId: 'racer-2',
+          username: 'ChallengerTwo',
+          profilePhoto: 'https://example.com/c2.png',
+          status: 'finished',
+          wpm: 88,
+          accuracy: 97.5,
+          elapsedSeconds: 28,
+          rank: 2,
+          completedSnippet: true,
+        },
+        {
+          userId: 'racer-3',
+          username: 'SlowCoder',
+          profilePhoto: null,
+          status: 'timed_out',
+          wpm: 45,
+          accuracy: 85.0,
+          elapsedSeconds: 60,
+          rank: 3,
+          completedSnippet: false,
+        },
+      ],
+    };
+
+    const mockResults = [
+      {
+        userId: 'host-1',
+        username: 'SpeedKing',
+        wpm: 104,
+        accuracy: 99.2,
+        completionTimeSeconds: 22,
+        rank: 1,
+        completedSnippet: true,
+      },
+      {
+        userId: 'racer-2',
+        username: 'ChallengerTwo',
+        profilePhoto: 'https://example.com/c2.png',
+        wpm: 88,
+        accuracy: 97.5,
+        completionTimeSeconds: 28,
+        rank: 2,
+        completedSnippet: true,
+      },
+      {
+        userId: 'racer-3',
+        username: 'SlowCoder',
+        wpm: 45,
+        accuracy: 85.0,
+        completionTimeSeconds: 60,
+        rank: 3,
+        completedSnippet: false,
+        status: 'timed_out',
+      },
+    ];
+
+    test('RoomResults renders header bar with room code, language, and MATCH COMPLETED badge', () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomResults, {
+          room: finishedRoom,
+          results: mockResults,
+          currentUser: { id: 'host-1', username: 'SpeedKing' },
+        })
+      );
+
+      assert.ok(html.includes('ROOM: WIN999'));
+      assert.ok(html.includes('PYTHON'));
+      assert.ok(html.includes('HARD'));
+      assert.ok(html.includes('MATCH COMPLETED'));
+    });
+
+    test('RoomResults renders champion spotlight card with winner details and metrics', () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomResults, {
+          room: finishedRoom,
+          results: mockResults,
+          currentUser: { id: 'host-1', username: 'SpeedKing' },
+        })
+      );
+
+      assert.ok(html.includes('winner-spotlight-card'));
+      assert.ok(html.includes('1ST PLACE CHAMPION'));
+      assert.ok(html.includes('SpeedKing'));
+      assert.ok(html.includes('104')); // WPM
+      assert.ok(html.includes('99.2%')); // Accuracy
+      assert.ok(html.includes('22s')); // Time
+    });
+
+    test('RoomResults renders full leaderboard table with columns, rank pills, and status badges', () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomResults, {
+          room: finishedRoom,
+          results: mockResults,
+          currentUser: { id: 'racer-2', username: 'ChallengerTwo' },
+        })
+      );
+
+      assert.ok(html.includes('FINAL COMPETITION LEADERBOARD'));
+      assert.ok(html.includes('3 Competitors'));
+      assert.ok(html.includes('rank-gold'));
+      assert.ok(html.includes('rank-silver'));
+      assert.ok(html.includes('rank-bronze'));
+      assert.ok(html.includes('SpeedKing'));
+      assert.ok(html.includes('ChallengerTwo'));
+      assert.ok(html.includes('SlowCoder'));
+      assert.ok(html.includes('COMPLETED'));
+      assert.ok(html.includes('TIMED OUT'));
+    });
+
+    test('RoomResults highlights current user row with [YOU] badge and custom class', () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomResults, {
+          room: finishedRoom,
+          results: mockResults,
+          currentUser: { id: 'racer-2', username: 'ChallengerTwo' },
+        })
+      );
+
+      assert.ok(html.includes('result-row-you'));
+      assert.ok(html.includes('badge-participant-you'));
+      assert.ok(html.includes('badge-participant-host'));
+    });
+
+    test('RoomResults renders snippet summary and action navigation buttons', () => {
+      const html = ReactDOMServer.renderToStaticMarkup(
+        React.createElement(RoomResults, {
+          room: finishedRoom,
+          results: mockResults,
+          currentUser: { id: 'host-1', username: 'SpeedKing' },
+        })
+      );
+
+      assert.ok(html.includes('SNIPPET: Merge K Sorted Lists'));
+      assert.ok(html.includes('Create New Room'));
+      assert.ok(html.includes('Return to Rooms Hub'));
     });
   });
 });
